@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A flying disc: red rim, teal centre. Drawn in the adaptive icon's 72dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#D2232A"
+        android:pathData="M54,30a24,24 0,1 0,0.01 0z" />
+    <path
+        android:fillColor="#008392"
+        android:pathData="M54,38a16,16 0,1 0,0.01 0z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.35"
+        android:pathData="M42,48a14,6 -20,0 1,20 -8a14,4 -20,0 0,-20 8z" />
+</vector>
