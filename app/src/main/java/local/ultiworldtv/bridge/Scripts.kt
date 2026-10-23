@@ -102,8 +102,10 @@ object Scripts {
         return c.textContent.replace(/\s+/g, ' ').replace(/^Error:\s*/i, '').trim();
     """
 
+    /** The site's own logout link (it carries WordPress's nonce). The site's scripts add it after load, so wait a little. */
     const val LOGOUT_URL = """
-        const a = document.querySelector('a[href*="action=logout"]');
+        $WAIT_FN
+        const a = await uwWait(() => document.querySelector('a[href*="action=logout"]'), 5000);
         return a ? a.href : null;
     """
 
@@ -158,12 +160,15 @@ object Scripts {
      * checked the subscription; this waits for that and reads the stream's playback ID and signed token.
      *
      * It stops waiting early when no player is coming: right away when logged out (the paywall message is
-     * already on the page), or shortly after the paywall check swapped in something other than a player.
+     * already on the page), or a few seconds after the paywall check swapped in something other than a player.
+     *
+     * [loggedIn] comes from the login cookie, not the page: the page's "Log out" link is added by the site's
+     * scripts after load, and reading it too early made a logged-in TV look logged out.
      */
-    const val PLAYBACK = """
+    fun playback(loggedIn: Boolean) = """
         $WAIT_FN
         const WALL = '[data-content-endpoint], [data-authorization-endpoint]';
-        const loggedIn = !!document.querySelector('a[href*="action=logout"]');
+        const loggedIn = $loggedIn;
         const wall0 = document.querySelector(WALL);
         const holder = wall0 ? wall0.parentElement : null;
         let goneAt = 0;
@@ -175,7 +180,7 @@ object Scripts {
           const wall = document.querySelector(WALL);
           if (!loggedIn && wall) return { locked: wall };
           if (wall0 && !wall && !goneAt) goneAt = Date.now();
-          if (goneAt && Date.now() - goneAt > 2500) return { locked: holder };
+          if (goneAt && Date.now() - goneAt > 5000) return { locked: holder };
           return null;
         }, 20000);
         // The visible lines of a message block, without the analytics scripts inlined in it.

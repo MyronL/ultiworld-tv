@@ -18,7 +18,7 @@ class ScriptsExportTest {
             "library" to Scripts.LIBRARY,
             "scores" to Scripts.SCORES,
             "collection" to Scripts.collection("https://ultiworld.com/video/?event=199279#filtered"),
-            "playback" to Scripts.PLAYBACK,
+            "playback" to Scripts.playback(loggedIn = true),
             "heartbeat_true" to Scripts.heartbeat(true),
             "remote_friendly_form" to Scripts.REMOTE_FRIENDLY_FORM,
             "login_form_state" to Scripts.LOGIN_FORM_STATE,
