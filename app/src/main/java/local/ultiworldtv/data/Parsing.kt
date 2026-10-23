@@ -2,36 +2,59 @@ package local.ultiworldtv.data
 
 import java.time.OffsetDateTime
 import java.time.format.DateTimeParseException
+import kotlin.math.abs
 import org.json.JSONArray
 import org.json.JSONObject
 
 /** Turns what [local.ultiworldtv.bridge.Scripts] returns into the app's models. Kept free of Android so it is unit-tested. */
 object Parsing {
-    private val SIZE_SUFFIX = Regex("-\\d{2,4}x\\d{2,4}(?=\\.(?:jpe?g|png|webp)$)", RegexOption.IGNORE_CASE)
+    private val SIZE_SUFFIX = Regex("-(\\d{2,4})x(\\d{2,4})(?=\\.(?:jpe?g|png|webp)$)", RegexOption.IGNORE_CASE)
 
-    /** WordPress serves "photo-300x169.jpg" thumbnails; a TV card looks better with the full-size "photo.jpg". */
-    fun fullSizeImage(url: String?): String? = url?.takeUnless { it.startsWith("data:") || it.isBlank() }?.replace(SIZE_SUFFIX, "")
+    /**
+     * The image for a card, and what to fall back to. WordPress serves "photo-300x169.jpg" thumbnails of a
+     * "photo.jpg" upload. The thumbnail looks soft on a TV and the original is often 250 KB or more, so a 16:9
+     * thumbnail becomes WordPress's 768-pixel copy, "photo-768x432.jpg", about a fifth of the original's size.
+     * Uploads narrower than 768 pixels have no such copy, hence the fallback.
+     */
+    fun cardImage(url: String?): Pair<String?, String?> {
+        val thumb = url?.takeUnless { it.startsWith("data:") || it.isBlank() } ?: return null to null
+        val size = SIZE_SUFFIX.find(thumb) ?: return thumb to null
+        val (w, h) = size.destructured.let { (w, h) -> w.toInt() to h.toInt() }
+        if (w >= 768) return thumb to null
+        val full = thumb.replaceRange(size.range, "")
+        // WordPress rounds the height, so a 16:9 thumbnail is within half a pixel of 9/16 of its width.
+        if (abs(w * 9 - h * 16) > 8) return full to null
+        return thumb.replaceRange(size.range, "-768x432") to full
+    }
+
+    /** What [local.ultiworldtv.bridge.Scripts.LIBRARY] and friends return when Cloudflare wants to check first. */
+    fun isChallenge(v: Any?): Boolean = (v as? JSONObject)?.optBoolean("challenge") == true
 
     fun library(v: Any?): Library {
-        val o = v as? JSONObject ?: return Library(loggedIn = false, shelves = emptyList())
+        val o = v as? JSONObject ?: return Library(shelves = emptyList())
         val shelves = o.optJSONArray("shelves").objects().map { s ->
             Shelf(title = s.optString("title"), items = s.optJSONArray("items").objects().map(::card))
         }
-        return Library(loggedIn = o.optBoolean("loggedIn"), shelves = shelves.filter { it.items.isNotEmpty() })
+        return Library(shelves = shelves.filter { it.items.isNotEmpty() })
     }
 
-    fun cards(v: Any?): List<VideoCard> = (v as? JSONArray).objects().map(::card)
+    /** A collection page's cards (`{ items: [...] }`) or search results (a plain array). */
+    fun cards(v: Any?): List<VideoCard> = ((v as? JSONObject)?.optJSONArray("items") ?: v as? JSONArray).objects().map(::card)
 
-    fun card(o: JSONObject) = VideoCard(
-        title = o.optString("title").trim(),
-        url = o.optString("url"),
-        image = fullSizeImage(o.stringOrNull("image")),
-        badge = o.stringOrNull("badge"),
-        isLive = o.optBoolean("live"),
-        event = o.stringOrNull("event"),
-        division = o.stringOrNull("division"),
-        isCollection = o.optBoolean("collection")
-    )
+    fun card(o: JSONObject): VideoCard {
+        val (image, fallback) = cardImage(o.stringOrNull("image"))
+        return VideoCard(
+            title = o.optString("title").trim(),
+            url = o.optString("url"),
+            image = image,
+            imageFallback = fallback,
+            badge = o.stringOrNull("badge"),
+            isLive = o.optBoolean("live"),
+            event = o.stringOrNull("event"),
+            division = o.stringOrNull("division"),
+            isCollection = o.optBoolean("collection")
+        )
+    }
 
     fun scores(v: Any?): Scores {
         val o = v as? JSONObject ?: return Scores(emptyList(), pollSeconds = 60)

@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlin.coroutines.cancellation.CancellationException
 import local.ultiworldtv.bridge.ChallengeRequiredException
 import local.ultiworldtv.data.Library
 import local.ultiworldtv.data.Scores
@@ -21,6 +22,10 @@ class HomeModel(private val repo: UltiworldRepository, private val prefs: Shared
     var scores by mutableStateOf<Scores?>(null)
         private set
     var error by mutableStateOf<String?>(null)
+        private set
+
+    /** Whether the first scores request has finished, either way. Home waits for it so rows don't shift in later. */
+    var scoresTried by mutableStateOf(false)
         private set
     var hideScores by mutableStateOf(prefs.getBoolean(KEY_HIDE_SCORES, false))
         private set
@@ -43,6 +48,9 @@ class HomeModel(private val repo: UltiworldRepository, private val prefs: Shared
         try {
             library = repo.library()
             error = null
+        } catch (e: CancellationException) {
+            // Leaving the home screen isn't an error.
+            throw e
         } catch (e: ChallengeRequiredException) {
             throw e
         } catch (e: Exception) {
@@ -54,10 +62,14 @@ class HomeModel(private val repo: UltiworldRepository, private val prefs: Shared
     suspend fun refreshScores() {
         try {
             scores = repo.scores()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: ChallengeRequiredException) {
             throw e
         } catch (e: Exception) {
             // Scores are extra; the library still works without them.
+        } finally {
+            scoresTried = true
         }
     }
 
@@ -73,6 +85,7 @@ class HomeModel(private val repo: UltiworldRepository, private val prefs: Shared
     fun clear() {
         library = null
         scores = null
+        scoresTried = false
         error = null
         focusedKey = null
     }

@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,10 +60,13 @@ fun VideoCardView(card: VideoCard, onClick: () -> Unit, modifier: Modifier = Mod
             colors = CardDefaults.colors(containerColor = Palette.Surface)
         ) {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+                var image by remember(card.image) { mutableStateOf(card.image) }
                 AsyncImage(
-                    model = card.image,
+                    model = image,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    // The TV-sized copy isn't always there; then the original upload is.
+                    onError = { if (image != card.imageFallback && card.imageFallback != null) image = card.imageFallback },
                     modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                 )
                 card.badge?.let { Badge(it, live = card.isLive, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)) }

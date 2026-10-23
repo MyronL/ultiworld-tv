@@ -109,15 +109,30 @@ object Scripts {
         return a ? a.href : null;
     """
 
-    /** Run on the loaded /video/ page: the library's shelves (Live Now, Upcoming Videos, Recent Videos, ...). */
+    /**
+     * Fetches [url] (a page on the site) and parses it, without navigating. Cloudflare answers a request it wants
+     * to check first with a `cf-mitigated: challenge` header; that comes back as `{ challenge: true }` so the app
+     * can load a real page, which runs the check.
+     */
+    private const val FETCH_DOC_FN = """
+        async function uwFetchDoc(url) {
+          const r = await fetch(url, { credentials: 'include' });
+          if (r.headers.get('cf-mitigated') === 'challenge') return { challenge: true };
+          if (!r.ok) throw new Error('Ultiworld answered HTTP ' + r.status);
+          return { doc: new DOMParser().parseFromString(await r.text(), 'text/html'), url: r.url };
+        }
+    """
+
+    /**
+     * The library's shelves (Live Now, Upcoming Videos, Recent Videos, ...), read from a fetched copy of /video/.
+     * The shelves are in the page's HTML, so this is the same as loading the page, minus everything else it loads.
+     */
     const val LIBRARY = """
         $GRIDS_FN
-        $WAIT_FN
-        await uwWait(() => document.querySelector('.video-grid'), 5000);
-        return {
-          loggedIn: !!document.querySelector('a[href*="action=logout"]'),
-          shelves: uwGrids(document, location.href),
-        };
+        $FETCH_DOC_FN
+        const page = await uwFetchDoc('/video/');
+        if (page.challenge) return page;
+        return { shelves: uwGrids(page.doc, page.url) };
     """
 
     /**
@@ -145,14 +160,54 @@ object Scripts {
     /** Every card on a filtered library page (an event, team pack or feature), fetched without navigating. */
     fun collection(url: String) = """
         $GRIDS_FN
-        const url = ${JSONObject.quote(url)};
-        const r = await fetch(url, { credentials: 'include' });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+        $FETCH_DOC_FN
+        const page = await uwFetchDoc(${JSONObject.quote(url)});
+        if (page.challenge) return page;
         const seen = new Set();
         const items = [];
-        uwGrids(doc, url).forEach((s) => s.items.forEach((it) => { if (!seen.has(it.url)) { seen.add(it.url); items.push(it); } }));
-        return items;
+        uwGrids(page.doc, page.url).forEach((s) => s.items.forEach((it) => { if (!seen.has(it.url)) { seen.add(it.url); items.push(it); } }));
+        return { items: items };
+    """
+
+    /**
+     * Searches the video library the way the site's own search box does: Ultiworld's Algolia index, with the
+     * search-only key the site puts on every page as `window.algoliaWP`. Library videos are the "Video" content
+     * type outside the "Video" article category (those are articles with an embedded clip).
+     */
+    fun search(query: String) = """
+        const cfg = window.algoliaWP;
+        if (!cfg || !cfg.appId || !cfg.publicApiKey) throw new Error("Ultiworld's search isn't available right now");
+        const index = encodeURIComponent(cfg.defaultIndex || 'uw_index');
+        const auth = 'x-algolia-application-id=' + encodeURIComponent(cfg.appId) + '&x-algolia-api-key=' + encodeURIComponent(cfg.publicApiKey);
+        const r = await fetch('https://' + cfg.appId.toLowerCase() + '-dsn.algolia.net/1/indexes/' + index + '/query?' + auth, {
+          method: 'POST',
+          credentials: 'omit',
+          body: JSON.stringify({
+            query: ${JSONObject.quote(query)},
+            hitsPerPage: 48,
+            filters: 'content_type:Video AND NOT categories:Video',
+            attributesToRetrieve: ['title', 'url', 'image', 'post_date', '_tags', 'divisions'],
+            attributesToHighlight: [],
+          }),
+        });
+        if (!r.ok) throw new Error('Search answered HTTP ' + r.status);
+        const j = await r.json();
+        return (j.hits || [])
+          .filter((h) => {
+            if (!h.url) return false;
+            const u = new URL(h.url, location.href);
+            return u.host === location.host && /^\/video\/\d+\//.test(u.pathname);
+          })
+          .map((h) => ({
+            title: h.title || '',
+            url: new URL(h.url, location.href).href,
+            image: h.image || null,
+            badge: h.post_date || null,
+            live: false,
+            event: (h._tags || [])[0] || null,
+            division: (h.divisions || [])[0] || null,
+            collection: false,
+          }));
     """
 
     /**

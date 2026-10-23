@@ -47,7 +47,14 @@ private sealed interface HomeRow {
 }
 
 @Composable
-fun HomeScreen(model: HomeModel, onOpen: (VideoCard) -> Unit, onGame: (Game) -> Unit, onSignOut: () -> Unit, onChallenge: () -> Unit) {
+fun HomeScreen(
+    model: HomeModel,
+    onOpen: (VideoCard) -> Unit,
+    onGame: (Game) -> Unit,
+    onSearch: () -> Unit,
+    onSignOut: () -> Unit,
+    onChallenge: () -> Unit
+) {
     LaunchedEffect(model.reloadToken) {
         while (true) {
             try {
@@ -81,14 +88,22 @@ fun HomeScreen(model: HomeModel, onOpen: (VideoCard) -> Unit, onGame: (Game) -> 
                 action = "Try again",
                 onAction = model::retry
             )
-            library == null -> CenteredMessage(title = "Loading the video library…", body = "")
-            else -> HomeRows(model, rows, onOpen, onGame, onSignOut)
+            // Today's games slot in between the library's rows, so wait for them too rather than shuffle rows later.
+            library == null || !model.scoresTried -> CenteredMessage(title = "Loading the video library…", body = "")
+            else -> HomeRows(model, rows, onOpen, onGame, onSearch, onSignOut)
         }
     }
 }
 
 @Composable
-private fun HomeRows(model: HomeModel, rows: List<HomeRow>, onOpen: (VideoCard) -> Unit, onGame: (Game) -> Unit, onSignOut: () -> Unit) {
+private fun HomeRows(
+    model: HomeModel,
+    rows: List<HomeRow>,
+    onOpen: (VideoCard) -> Unit,
+    onGame: (Game) -> Unit,
+    onSearch: () -> Unit,
+    onSignOut: () -> Unit
+) {
     val restore = remember { FocusRequester() }
     val first = remember { FocusRequester() }
     val firstKey = rows.firstOrNull()?.let { row ->
@@ -116,7 +131,7 @@ private fun HomeRows(model: HomeModel, rows: List<HomeRow>, onOpen: (VideoCard) 
         verticalArrangement = Arrangement.spacedBy(28.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        item(key = "header") { Header(model, onSignOut) }
+        item(key = "header") { Header(model, onSearch, onSignOut) }
         if (rows.isEmpty()) {
             item(key = "empty") {
                 Text("Nothing in the video library right now.", color = Palette.TextMuted, modifier = Modifier.padding(horizontal = 48.dp))
@@ -155,12 +170,14 @@ private fun HomeRows(model: HomeModel, rows: List<HomeRow>, onOpen: (VideoCard) 
 }
 
 @Composable
-private fun Header(model: HomeModel, onSignOut: () -> Unit) {
+private fun Header(model: HomeModel, onSearch: () -> Unit, onSignOut: () -> Unit) {
     Row(Modifier.padding(horizontal = 48.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("ULTIWORLD", color = Palette.Red, fontSize = 30.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.width(8.dp))
         Text("TV", color = Palette.Teal, fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
+        OutlinedButton(onClick = onSearch) { Text("Search") }
+        Spacer(Modifier.width(16.dp))
         OutlinedButton(onClick = model::toggleHideScores) { Text(if (model.hideScores) "Show scores" else "Hide scores") }
         Spacer(Modifier.width(16.dp))
         OutlinedButton(onClick = onSignOut) { Text("Sign out") }

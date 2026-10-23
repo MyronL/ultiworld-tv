@@ -1,5 +1,6 @@
 package local.ultiworldtv.data
 
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,20 +10,46 @@ import org.junit.Test
 
 class ParsingTest {
     @Test
-    fun `full size image drops the WordPress size suffix`() {
-        assertEquals(
-            "https://cdn.ultiworld.com/wordpress/wp-content/uploads/2026/10/D1-Field-Pass.jpg",
-            Parsing.fullSizeImage("https://cdn.ultiworld.com/wordpress/wp-content/uploads/2026/10/D1-Field-Pass-300x169.jpg")
-        )
-        assertEquals("https://x/a-1-001.png", Parsing.fullSizeImage("https://x/a-1-001.png"))
-        assertNull(Parsing.fullSizeImage("data:image/gif;base64,R0lGOD"))
+    fun `card image is the 768 pixel copy of a 16 by 9 thumbnail, falling back to the original`() {
+        val base = "https://cdn.ultiworld.com/wordpress/wp-content/uploads/2026/10/D1-Field-Pass"
+        assertEquals(("$base-768x432.jpg" to "$base.jpg"), Parsing.cardImage("$base-300x169.jpg"))
+        assertEquals(("https://x/a-768x432.png" to "https://x/a.png"), Parsing.cardImage("https://x/a-150x84.png"))
+    }
+
+    @Test
+    fun `card image keeps other shapes and big thumbnails as they are`() {
+        // Not 16:9: the 768-pixel copy's height can't be known, so use the original.
+        assertEquals(("https://x/a.jpg" to null), Parsing.cardImage("https://x/a-300x200.jpg"))
+        assertEquals(("https://x/a-1024x576.jpg" to null), Parsing.cardImage("https://x/a-1024x576.jpg"))
+        assertEquals(("https://x/a-1-001.png" to null), Parsing.cardImage("https://x/a-1-001.png"))
+        assertEquals((null to null), Parsing.cardImage("data:image/gif;base64,R0lGOD"))
+        assertEquals((null to null), Parsing.cardImage(null))
+    }
+
+    @Test
+    fun `collection items and search results`() {
+        val hit = """{"title": "[Showcase] DiG vs. Revolver", "url": "https://ultiworld.com/video/203402/x/", "image": null,
+            "badge": "Oct 23, 2026", "live": false, "event": "Club Nationals 2026", "division": "USAU Club Men's", "collection": false}"""
+        assertEquals(listOf("[Showcase] DiG vs. Revolver"), Parsing.cards(JSONObject("""{"items": [$hit]}""")).map { it.title })
+        val results = Parsing.cards(JSONArray("[$hit]"))
+        assertEquals("Oct 23, 2026", results.single().badge)
+        assertEquals("USAU Club Men's", results.single().division)
+        assertTrue(Parsing.cards(JSONObject("""{"challenge": true}""")).isEmpty())
+    }
+
+    @Test
+    fun `cloudflare challenge answer`() {
+        assertTrue(Parsing.isChallenge(JSONObject("""{"challenge": true}""")))
+        assertFalse(Parsing.isChallenge(JSONObject("""{"shelves": []}""")))
+        assertFalse(Parsing.isChallenge(JSONArray("[]")))
+        assertFalse(Parsing.isChallenge(null))
     }
 
     @Test
     fun `library shelves and cards`() {
         val v = JSONObject(
             """
-            {"loggedIn": true, "shelves": [
+            {"shelves": [
               {"title": "Live Now", "items": [
                 {"title": "[Showcase] Tower vs. Drag’n Thrust", "url": "https://ultiworld.com/video/203399/showcase/",
                  "image": "https://cdn.ultiworld.com/u/D1R1F1-300x169.jpg", "badge": "LIVE", "live": true,
@@ -37,12 +64,12 @@ class ParsingTest {
             """
         )
         val lib = Parsing.library(v)
-        assertTrue(lib.loggedIn)
         assertEquals(listOf("Live Now", "Recent Events"), lib.shelves.map { it.title })
         val live = lib.shelves[0].items.single()
         assertTrue(live.isLive)
         assertFalse(live.isCollection)
-        assertEquals("https://cdn.ultiworld.com/u/D1R1F1.jpg", live.image)
+        assertEquals("https://cdn.ultiworld.com/u/D1R1F1-768x432.jpg", live.image)
+        assertEquals("https://cdn.ultiworld.com/u/D1R1F1.jpg", live.imageFallback)
         val event = lib.shelves[1].items.single()
         assertTrue(event.isCollection)
         assertNull(event.badge)

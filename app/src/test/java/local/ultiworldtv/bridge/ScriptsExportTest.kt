@@ -18,6 +18,7 @@ class ScriptsExportTest {
             "library" to Scripts.LIBRARY,
             "scores" to Scripts.SCORES,
             "collection" to Scripts.collection("https://ultiworld.com/video/?event=199279#filtered"),
+            "search" to Scripts.search("revolver \"nationals\""),
             "playback" to Scripts.playback(loggedIn = true),
             "heartbeat_true" to Scripts.heartbeat(true),
             "remote_friendly_form" to Scripts.REMOTE_FRIENDLY_FORM,

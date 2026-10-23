@@ -6,8 +6,11 @@ import java.time.OffsetDateTime
 data class VideoCard(
     val title: String,
     val url: String,
+    /** A TV-sized copy of the thumbnail when WordPress has one, else the original upload. */
     val image: String?,
-    /** "LIVE", a start time like "11:15AM PDT", or a duration like "1:21:12". */
+    /** The original upload, for when [image] turns out to be missing. Null when [image] is already the original. */
+    val imageFallback: String?,
+    /** "LIVE", a start time like "11:15AM PDT", a duration like "1:21:12", or a date on search results. */
     val badge: String?,
     val isLive: Boolean,
     val event: String?,
@@ -17,7 +20,7 @@ data class VideoCard(
 
 data class Shelf(val title: String, val items: List<VideoCard>)
 
-data class Library(val loggedIn: Boolean, val shelves: List<Shelf>)
+data class Library(val shelves: List<Shelf>)
 
 data class Team(val name: String, val fullName: String?, val seed: Int?, val score: Int?, val logo: String?, val isWinner: Boolean)
 

@@ -3,6 +3,7 @@ package local.ultiworldtv.login
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
@@ -28,6 +29,8 @@ import local.ultiworldtv.data.LoginResult
 class PhoneLoginServer(
     private val scope: CoroutineScope,
     private val preferredPort: Int = DEFAULT_PORT,
+    /** The TV's home-network address, so the server isn't reachable on other interfaces (a VPN, say). Null: all of them. */
+    private val bindAddress: InetAddress? = null,
     private val onCredentials: suspend (username: String, password: String) -> LoginResult
 ) {
     val code: String = newCode()
@@ -39,6 +42,7 @@ class PhoneLoginServer(
     @Volatile
     private var server: ServerSocket? = null
     private val attempts = AtomicInteger(0)
+    private val clients = AtomicInteger(0)
 
     @Volatile
     private var finished = false
@@ -46,9 +50,9 @@ class PhoneLoginServer(
     /** Starts listening on [preferredPort], or any free port if that one's taken. Returns the port. */
     fun start(): Int {
         val socket = try {
-            ServerSocket(preferredPort)
+            ServerSocket(preferredPort, BACKLOG, bindAddress)
         } catch (e: IOException) {
-            ServerSocket(0)
+            ServerSocket(0, BACKLOG, bindAddress)
         }
         server = socket
         port = socket.localPort
@@ -59,7 +63,26 @@ class PhoneLoginServer(
                 } catch (e: IOException) {
                     break
                 }
-                launch { client.use { handle(it) } }
+                // A phone needs one or two connections; more at once is someone tying the server up.
+                if (clients.incrementAndGet() > MAX_CLIENTS) {
+                    clients.decrementAndGet()
+                    runCatching { client.close() }
+                    continue
+                }
+                launch {
+                    // The socket timeout is per read, so a client trickling bytes could hold on for hours.
+                    // Closing the socket ends a blocked read too.
+                    val deadline = launch {
+                        delay(REQUEST_DEADLINE_MS)
+                        runCatching { client.close() }
+                    }
+                    try {
+                        client.use { handle(it) }
+                    } finally {
+                        deadline.cancel()
+                        clients.decrementAndGet()
+                    }
+                }
             }
         }
         return port
@@ -143,6 +166,11 @@ class PhoneLoginServer(
     companion object {
         const val DEFAULT_PORT = 8765
         const val MAX_ATTEMPTS = 8
+        private const val MAX_CLIENTS = 4
+        private const val BACKLOG = 8
+
+        // Reading the request and the login itself, which can take a while.
+        private const val REQUEST_DEADLINE_MS = 90_000L
         private const val LOGIN_TIMEOUT_MS = 75_000L
         private const val MAX_HEADER_BYTES = 8 * 1024
         private const val MAX_BODY_BYTES = 4 * 1024

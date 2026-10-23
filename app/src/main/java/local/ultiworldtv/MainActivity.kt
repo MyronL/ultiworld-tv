@@ -54,6 +54,8 @@ import local.ultiworldtv.ui.FeedPicker
 import local.ultiworldtv.ui.HomeModel
 import local.ultiworldtv.ui.HomeScreen
 import local.ultiworldtv.ui.Palette
+import local.ultiworldtv.ui.SearchModel
+import local.ultiworldtv.ui.SearchScreen
 import local.ultiworldtv.ui.UltiworldTheme
 
 private sealed interface Screen {
@@ -69,6 +71,7 @@ private sealed interface Screen {
     data object Challenge : Screen
     data object Home : Screen
     data class Collection(val title: String, val url: String) : Screen
+    data object Search : Screen
     data class Player(val url: String) : Screen
     data class Message(val title: String, val body: String, val action: String, val next: Screen) : Screen
 }
@@ -78,6 +81,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var repo: UltiworldRepository
     private lateinit var home: HomeModel
     private lateinit var login: LoginModel
+    private lateinit var search: SearchModel
     private lateinit var composeView: ComposeView
     private lateinit var hint: TextView
 
@@ -90,6 +94,7 @@ class MainActivity : ComponentActivity() {
         repo = UltiworldRepository(bridge, lifecycleScope)
         home = HomeModel(repo, getSharedPreferences("settings", MODE_PRIVATE))
         login = LoginModel(repo)
+        search = SearchModel(repo)
 
         composeView = ComposeView(this).apply { setContent { UltiworldTheme { App() } } }
         hint = TextView(this).apply {
@@ -150,9 +155,11 @@ class MainActivity : ComponentActivity() {
                         else -> picker = game
                     }
                 },
+                onSearch = { push(Screen.Search) },
                 onSignOut = { confirmSignOut = true },
                 onChallenge = { push(Screen.Challenge) }
             )
+            Screen.Search -> SearchScreen(search, onOpen = ::open, onChallenge = { push(Screen.Challenge) })
             is Screen.Collection -> CollectionScreen(repo, screen.title, screen.url, onOpen = ::open, onChallenge = {
                 push(Screen.Challenge)
             })
@@ -162,6 +169,9 @@ class MainActivity : ComponentActivity() {
                 userAgent = bridge.userAgent,
                 onExit = ::goBack,
                 onSessionExpired = {
+                    lifecycleScope.launch { runCatching { repo.forgetLogin() } }
+                    home.clear()
+                    search.clear()
                     replaceAll(
                         Screen.Message(
                             "Logged out on this TV",
@@ -189,6 +199,7 @@ class MainActivity : ComponentActivity() {
                     lifecycleScope.launch {
                         runCatching { repo.signOut() }
                         home.clear()
+                        search.clear()
                         replaceAll(Screen.Login)
                     }
                 },
@@ -224,8 +235,15 @@ class MainActivity : ComponentActivity() {
     private fun onLoggedIn() {
         bridge.flushCookies()
         home.clear()
+        search.clear()
         login.reset()
         replaceAll(Screen.Home)
+    }
+
+    /** A remote or keyboard with a search key. */
+    override fun onSearchRequested(): Boolean {
+        if (top is Screen.Home || top is Screen.Collection) push(Screen.Search)
+        return true
     }
 
     private fun open(card: VideoCard) {
@@ -269,7 +287,7 @@ class MainActivity : ComponentActivity() {
             runCatching { bridge.evaluate(Scripts.REMOTE_FRIENDLY_FORM, timeoutMs = 5_000) }
             when (screen) {
                 is Screen.WebLogin -> {
-                    if (url.startsWith(WebBridge.ORIGIN) && !url.contains("wp-login.php")) {
+                    if (WebBridge.isOnSite(url) && !url.contains("wp-login.php")) {
                         val loggedIn = runCatching { bridge.evaluate(Scripts.IS_LOGGED_IN) == true }.getOrDefault(false)
                         if ((loggedIn || bridge.hasLoginCookie()) && top is Screen.WebLogin) onLoggedIn()
                     }

@@ -51,10 +51,7 @@ class UltiworldRepository(private val bridge: WebBridge, private val scope: Coro
         }
     }
 
-    suspend fun library(): Library = bridge.session {
-        load(VIDEO_LIBRARY_URL)
-        Parsing.library(evaluate(Scripts.LIBRARY))
-    }
+    suspend fun library(): Library = bridge.session { Parsing.library(evaluateFetched(Scripts.LIBRARY)) }
 
     suspend fun scores(): Scores = bridge.session {
         ensureOnSite()
@@ -62,11 +59,19 @@ class UltiworldRepository(private val bridge: WebBridge, private val scope: Coro
     }
 
     suspend fun collection(url: String): List<VideoCard> = bridge.session {
+        // Links come from scraped pages and search hits: only follow ones that stay on Ultiworld.
+        if (!WebBridge.isOnSite(url)) return@session emptyList()
+        Parsing.cards(evaluateFetched(Scripts.collection(url), timeoutMs = 30_000))
+    }
+
+    /** Library videos matching [query], best match first, from the site's own search. */
+    suspend fun search(query: String): List<VideoCard> = bridge.session {
         ensureOnSite()
-        Parsing.cards(evaluate(Scripts.collection(url), timeoutMs = 30_000))
+        Parsing.cards(evaluate(Scripts.search(query)))
     }
 
     suspend fun playback(videoUrl: String): PlaybackResult {
+        if (!WebBridge.isOnSite(videoUrl)) return PlaybackResult.Missing
         val result = bridge.session {
             var r = readPlayback(videoUrl)
             // A logged-in TV that sees the paywall is often just early: the site's check hadn't finished.
@@ -107,9 +112,27 @@ class UltiworldRepository(private val bridge: WebBridge, private val scope: Coro
         }
     }
 
+    /**
+     * Forgets the login on this TV without asking the site, for when Ultiworld already ended the session
+     * (too many devices). Otherwise the leftover cookie would look logged in on the next launch.
+     */
+    suspend fun forgetLogin() = bridge.session { clearSession() }
+
     private suspend fun WebBridge.ensureOnSite() {
         val url = currentUrl.value
-        if (url == null || !url.startsWith(WebBridge.ORIGIN) || isChallengePage()) load(VIDEO_LIBRARY_URL)
+        if (!WebBridge.isOnSite(url) || isChallengePage()) load(VIDEO_LIBRARY_URL)
+    }
+
+    /**
+     * Runs a script that fetches a page instead of navigating to it. When Cloudflare wants to check the TV first,
+     * a real page load runs the check (or puts it on screen, via [ChallengeRequiredException]), then it tries again.
+     */
+    private suspend fun WebBridge.evaluateFetched(script: String, timeoutMs: Long = 20_000): Any? {
+        ensureOnSite()
+        val v = evaluate(script, timeoutMs)
+        if (!Parsing.isChallenge(v)) return v
+        load(VIDEO_LIBRARY_URL)
+        return evaluate(script, timeoutMs).also { if (Parsing.isChallenge(it)) throw ChallengeRequiredException() }
     }
 
     companion object {

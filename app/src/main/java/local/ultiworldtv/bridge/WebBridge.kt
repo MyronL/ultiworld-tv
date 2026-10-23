@@ -220,6 +220,13 @@ class WebBridge(context: Context) {
 
     companion object {
         const val ORIGIN = "https://ultiworld.com"
+        private const val HOST = "ultiworld.com"
+
+        /** Whether [url] is a page on Ultiworld itself (not a look-alike such as ultiworld.com.example.net). */
+        fun isOnSite(url: String?): Boolean {
+            val uri = url?.let(Uri::parse) ?: return false
+            return uri.scheme == "https" && uri.host == HOST
+        }
         private const val TAG = "WebBridge"
         private const val JS_OBJECT = "UWNative"
 

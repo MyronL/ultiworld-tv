@@ -22,7 +22,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Sideloaded over ADB for personal use, never published: the debug key lets it install over a debug build.
+            // Sideloaded over ADB, not published to a store: signing with your own debug key lets it install over a debug build.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
