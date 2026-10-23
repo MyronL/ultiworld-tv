@@ -55,7 +55,9 @@ Ultiworld changes its pages, that's the file to fix.
   check. It plays a video only when the site hands your account the player and its signed stream link. A
   video your plan doesn't include shows Ultiworld's own "requires…" message.
 - **Device limit.** It sends the same check-ins the site's player sends, and stops when Ultiworld says
-  you're streaming on too many devices.
+  you're streaming on too many devices. The hidden page's own script would also send "not streaming" on
+  every page load, which tells Ultiworld the TV gave up its stream mid-game, so the app blocks those and
+  only its own check-ins speak for the TV. As on the website, a check-in that fails doesn't stop the video.
 - **Stream requests** go to Mux with ultiworld.com as the referrer, as they do from the website's player.
 - **Blocked in the hidden page:** ads, analytics (including Mux's viewing stats) and the page's own player,
   to spare the TV's CPU. Ultiworld doesn't see these plays in its analytics.

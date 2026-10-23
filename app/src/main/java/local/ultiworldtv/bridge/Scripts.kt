@@ -275,10 +275,12 @@ object Scripts {
 
     /**
      * The site's device-limit check-in, sent the way its own player sends it: `streaming=true` every
-     * 80 seconds while playing, `streaming=false` otherwise.
+     * 80 seconds while playing, `streaming=false` otherwise. Marked with [WebBridge.APP_CHECK_IN_PARAM]
+     * so [WebBridge] can tell it from the page's own check-ins, which it blocks.
      */
     fun heartbeat(streaming: Boolean) = """
-        const url = (window.uwHeartbeatConfig && uwHeartbeatConfig.url) || '/wp-json/uw/v1/heartbeat/';
+        const base = (window.uwHeartbeatConfig && uwHeartbeatConfig.url) || '/wp-json/uw/v1/heartbeat/';
+        const url = base + (base.indexOf('?') === -1 ? '?' : '&') + '${WebBridge.APP_CHECK_IN_PARAM}=1';
         const r = await fetch(url, {
           method: 'POST',
           credentials: 'include',

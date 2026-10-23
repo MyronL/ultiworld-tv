@@ -79,8 +79,8 @@ class UltiworldRepository(private val bridge: WebBridge, private val scope: Coro
             if (r is PlaybackResult.Locked && hasLoginCookie()) r = readPlayback(videoUrl)
             r
         }
-        // Leave the video page: its own script would otherwise keep sending "not streaming" check-ins
-        // alongside the app's "streaming" ones. Playback can start while this loads.
+        // Leave the video page, so its scripts stop running while the app plays the stream (its check-ins are
+        // blocked anyway, see WebBridge). Playback can start while this loads.
         scope.launch { bridge.session { runCatching { load(VIDEO_LIBRARY_URL) } } }
         return result
     }

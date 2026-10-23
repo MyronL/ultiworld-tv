@@ -133,17 +133,10 @@ class ParsingTest {
 
     @Test
     fun `heartbeat defaults to a valid session`() {
-        assertEquals(HeartbeatResult(sessionValid = true, stopStreaming = false, checkedIn = false), Parsing.heartbeat(null))
+        assertEquals(HeartbeatResult(sessionValid = true, stopStreaming = false), Parsing.heartbeat(null))
         assertEquals(
-            HeartbeatResult(sessionValid = false, stopStreaming = true, checkedIn = true),
+            HeartbeatResult(sessionValid = false, stopStreaming = true),
             Parsing.heartbeat(JSONObject("""{"status": 200, "sessionValid": false, "stopStreaming": true}"""))
         )
-    }
-
-    @Test
-    fun `a heartbeat the server turned away is not a check-in`() {
-        val r = Parsing.heartbeat(JSONObject("""{"status": 503, "sessionValid": true, "stopStreaming": false}"""))
-        assertFalse(r.checkedIn)
-        assertTrue(r.sessionValid)
     }
 }

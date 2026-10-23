@@ -76,8 +76,4 @@ sealed interface LoginResult {
     data class NeedsWebPage(val reason: String) : LoginResult
 }
 
-/**
- * The site's answer to a device-limit check-in. [checkedIn] is false when the check-in didn't go through
- * (an error page, say), so it can't be counted as one.
- */
-data class HeartbeatResult(val sessionValid: Boolean, val stopStreaming: Boolean, val checkedIn: Boolean)
+data class HeartbeatResult(val sessionValid: Boolean, val stopStreaming: Boolean)

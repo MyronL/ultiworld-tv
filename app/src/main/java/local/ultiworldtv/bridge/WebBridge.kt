@@ -220,6 +220,9 @@ class WebBridge(context: Context) {
         val host = uri.host ?: return false
         val path = uri.path.orEmpty()
         if (BLOCKED_HOST_SUFFIXES.any { host == it || host.endsWith(".$it") }) return true
+        // The page's own device-limit check-ins. Its script sends "not streaming" on every page load, which
+        // would tell Ultiworld the TV gave up its stream while the app is playing one; the app sends its own.
+        if (host == HOST && path == HEARTBEAT_PATH && uri.getQueryParameter(APP_CHECK_IN_PARAM) == null) return true
         // The page's own video player: the app plays the stream natively, so the page copy must not load it too.
         if (host == "cdn.jsdelivr.net" && path.contains("@mux")) return true
         // The Chromecast sender library that the page player pulls in. reCAPTCHA, also on gstatic, stays.
@@ -232,6 +235,10 @@ class WebBridge(context: Context) {
     companion object {
         const val ORIGIN = "https://ultiworld.com"
         private const val HOST = "ultiworld.com"
+        private const val HEARTBEAT_PATH = "/wp-json/uw/v1/heartbeat/"
+
+        /** Marks the app's own check-ins, so the page's can be told apart and blocked. */
+        const val APP_CHECK_IN_PARAM = "uwtv"
 
         /** Whether [url] is a page on Ultiworld itself (not a look-alike such as ultiworld.com.example.net). */
         fun isOnSite(url: String?): Boolean {

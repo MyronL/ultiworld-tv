@@ -188,13 +188,13 @@ private fun VideoPlayer(
     }
 
     LaunchedEffect(player) {
-        val missed = MissedCheckIns()
         while (true) {
             val now = streaming.value
             val result = try {
                 repo.heartbeat(streaming = now)
             } catch (e: Exception) {
-                // Leaving the player cancels this loop, and that isn't a failed check-in.
+                // Leaving the player cancels this loop. Any other failure is a network blip: like the
+                // website's player, keep playing and check in again at the next interval.
                 ensureActive()
                 null
             }
@@ -207,18 +207,6 @@ private fun VideoPlayer(
                 player.stop()
                 onFailed(
                     PlayerState.Failed("Streaming on too many devices", "Stop watching on another device, then try again.", canRetry = true)
-                )
-                return@LaunchedEffect
-            }
-            if (missed.record(checkedIn = result?.checkedIn == true)) {
-                player.stop()
-                onFailed(
-                    PlayerState.Failed(
-                        "Lost touch with Ultiworld",
-                        "Ultiworld needs to hear from this TV while you watch, and it hasn't for a few minutes. " +
-                            "Check the TV's internet connection, then try again.",
-                        canRetry = true
-                    )
                 )
                 return@LaunchedEffect
             }
