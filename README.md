@@ -37,8 +37,8 @@ Ultiworld changes its pages, that's the file to fix.
 
 ## Install on the TV
 
-You need `../adb-tools` (its ADB tools already have the TV's trust), JDK 17 and the Android SDK at
-`/opt/homebrew/share/android-commandlinetools` (see `local.properties`).
+You need JDK 17 and the Android SDK at `/opt/homebrew/share/android-commandlinetools` (see
+`local.properties`). The TV already trusts this Mac's ADB key, so there's no prompt on the TV.
 
 1. On the TV: **Settings → System → Developer options → USB debugging** on.
 2. On the Mac:
