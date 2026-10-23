@@ -20,7 +20,10 @@ class ScriptsExportTest {
             "collection" to Scripts.collection("https://ultiworld.com/video/?event=199279#filtered"),
             "playback" to Scripts.PLAYBACK,
             "heartbeat_true" to Scripts.heartbeat(true),
-            "remote_friendly_form" to Scripts.REMOTE_FRIENDLY_FORM
+            "remote_friendly_form" to Scripts.REMOTE_FRIENDLY_FORM,
+            "login_form_state" to Scripts.LOGIN_FORM_STATE,
+            "submit_login" to Scripts.submitLogin("me@example.com", "pa\"ss'word\\"),
+            "login_error" to Scripts.LOGIN_ERROR
         )
         scripts.forEach { (name, body) -> File(dir, "$name.js").writeText("(async () => {\n$body\n})();\n") }
     }

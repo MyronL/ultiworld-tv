@@ -57,6 +57,51 @@ object Scripts {
     /** Logged in when the page offers a logout link (WordPress adds no body class on this theme). */
     const val IS_LOGGED_IN = """return !!document.querySelector('a[href*="action=logout"]');"""
 
+    /**
+     * Run on the loaded login page (WordPress's wp-login.php): whether the usual form is there, and whether
+     * it carries a human check the app can't fill in for you.
+     */
+    const val LOGIN_FORM_STATE = """
+        const form = document.querySelector('#loginform');
+        return {
+          hasForm: !!(form && form.querySelector('#user_login') && form.querySelector('#user_pass')),
+          humanCheck: !!(form && form.querySelector(
+            '.cf-turnstile, .g-recaptcha, .h-captcha, iframe[src*="recaptcha"], iframe[src*="turnstile"], iframe[src*="hcaptcha"]'
+          )),
+        };
+    """
+
+    /**
+     * Fills in the login form and submits it. The submit runs after this returns, because the page is
+     * replaced by the next one and could not answer afterwards. Ticks "Remember Me" so the login lasts.
+     */
+    fun submitLogin(username: String, password: String) = """
+        const form = document.querySelector('#loginform');
+        const set = (sel, v) => {
+          const el = form.querySelector(sel);
+          el.focus();
+          el.value = v;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        set('#user_login', ${JSONObject.quote(username)});
+        set('#user_pass', ${JSONObject.quote(password)});
+        const remember = form.querySelector('#rememberme');
+        if (remember) remember.checked = true;
+        const button = form.querySelector('#wp-submit, [type=submit]');
+        setTimeout(() => (button ? button.click() : form.submit()), 50);
+        return true;
+    """
+
+    /** WordPress's message after a failed login, without its "Lost your password?" link. */
+    const val LOGIN_ERROR = """
+        const e = document.querySelector('#login_error, .login .message.error, .notice-error');
+        if (!e) return null;
+        const c = e.cloneNode(true);
+        c.querySelectorAll('a').forEach((a) => { if (/lost your password/i.test(a.textContent)) a.remove(); });
+        return c.textContent.replace(/\s+/g, ' ').replace(/^Error:\s*/i, '').trim();
+    """
+
     const val LOGOUT_URL = """
         const a = document.querySelector('a[href*="action=logout"]');
         return a ? a.href : null;

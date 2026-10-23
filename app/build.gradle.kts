@@ -71,6 +71,8 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.4.1")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // QR code for logging in from a phone. Just the encoder: plain Java, no camera or Android parts.
+    implementation("com.google.zxing:core:3.5.3")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

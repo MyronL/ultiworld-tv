@@ -42,8 +42,11 @@ import local.ultiworldtv.bridge.ChallengeRequiredException
 import local.ultiworldtv.bridge.Scripts
 import local.ultiworldtv.bridge.WebBridge
 import local.ultiworldtv.data.Game
+import local.ultiworldtv.data.LoginResult
 import local.ultiworldtv.data.UltiworldRepository
 import local.ultiworldtv.data.VideoCard
+import local.ultiworldtv.login.LoginModel
+import local.ultiworldtv.login.LoginScreen
 import local.ultiworldtv.player.PlayerScreen
 import local.ultiworldtv.ui.CenteredMessage
 import local.ultiworldtv.ui.CollectionScreen
@@ -55,7 +58,12 @@ import local.ultiworldtv.ui.UltiworldTheme
 
 private sealed interface Screen {
     data object Starting : Screen
+
+    /** The app's own login form, with the phone QR code. */
     data object Login : Screen
+
+    /** Ultiworld's login page in the WebView: the fallback when the app's form can't finish the job. */
+    data class WebLogin(val reason: String?) : Screen
 
     /** Cloudflare wants a human check; the WebView is on screen until it passes. */
     data object Challenge : Screen
@@ -69,6 +77,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var bridge: WebBridge
     private lateinit var repo: UltiworldRepository
     private lateinit var home: HomeModel
+    private lateinit var login: LoginModel
     private lateinit var composeView: ComposeView
     private lateinit var hint: TextView
 
@@ -80,6 +89,7 @@ class MainActivity : ComponentActivity() {
         bridge = WebBridge(this)
         repo = UltiworldRepository(bridge, lifecycleScope)
         home = HomeModel(repo, getSharedPreferences("settings", MODE_PRIVATE))
+        login = LoginModel(repo)
 
         composeView = ComposeView(this).apply { setContent { UltiworldTheme { App() } } }
         hint = TextView(this).apply {
@@ -128,7 +138,8 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) { start() }
                 CenteredMessage("ULTIWORLD TV", "Connecting to Ultiworld…")
             }
-            Screen.Login, Screen.Challenge -> Unit
+            Screen.Login -> LoginScreen(login, onResult = ::onLoginResult, onUseWebPage = { push(Screen.WebLogin(reason = null)) })
+            is Screen.WebLogin, Screen.Challenge -> Unit
             Screen.Home -> HomeScreen(
                 model = home,
                 onOpen = ::open,
@@ -201,6 +212,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun onLoginResult(result: LoginResult) {
+        when (result) {
+            LoginResult.Success -> onLoggedIn()
+            is LoginResult.NeedsWebPage -> push(Screen.WebLogin(result.reason))
+            // The login screen shows the message itself.
+            is LoginResult.Failed -> Unit
+        }
+    }
+
+    private fun onLoggedIn() {
+        bridge.flushCookies()
+        home.clear()
+        login.reset()
+        replaceAll(Screen.Home)
+    }
+
     private fun open(card: VideoCard) {
         push(if (card.isCollection) Screen.Collection(card.title, card.url) else Screen.Player(card.url))
     }
@@ -220,34 +247,31 @@ class MainActivity : ComponentActivity() {
 
     /** Puts the WebView in front for logging in and Cloudflare's check, and behind the app otherwise. */
     private fun showWeb(screen: Screen) {
-        val web = screen == Screen.Login || screen == Screen.Challenge
+        val web = screen is Screen.WebLogin || screen == Screen.Challenge
         composeView.visibility = if (web) View.GONE else View.VISIBLE
         bridge.webView.isFocusable = web
         bridge.webView.isFocusableInTouchMode = web
         hint.visibility = if (web) View.VISIBLE else View.GONE
         hint.text = when (screen) {
-            Screen.Login -> "Log in with your Ultiworld account   ·   ▲ ▼ move between fields   ·   OK types or presses"
+            is Screen.WebLogin -> (screen.reason?.let { "$it   ·   " } ?: "") +
+                "▲ ▼ move between fields   ·   OK types or presses   ·   BACK returns"
             Screen.Challenge -> "Ultiworld is checking this TV.  If a box appears, move to it and press OK."
             else -> ""
         }
-        if (screen == Screen.Login) bridge.webView.loadUrl(UltiworldRepository.LOGIN_URL)
+        if (screen is Screen.WebLogin) bridge.webView.loadUrl(UltiworldRepository.LOGIN_URL)
         if (web) bridge.webView.requestFocus() else composeView.requestFocus()
     }
 
     private fun onWebPageFinished(url: String) {
         val screen = top
-        if (screen != Screen.Login && screen != Screen.Challenge) return
+        if (screen !is Screen.WebLogin && screen != Screen.Challenge) return
         lifecycleScope.launch {
             runCatching { bridge.evaluate(Scripts.REMOTE_FRIENDLY_FORM, timeoutMs = 5_000) }
             when (screen) {
-                Screen.Login -> {
+                is Screen.WebLogin -> {
                     if (url.startsWith(WebBridge.ORIGIN) && !url.contains("wp-login.php")) {
                         val loggedIn = runCatching { bridge.evaluate(Scripts.IS_LOGGED_IN) == true }.getOrDefault(false)
-                        if ((loggedIn || bridge.hasLoginCookie()) && top == Screen.Login) {
-                            bridge.flushCookies()
-                            home.clear()
-                            replaceAll(Screen.Home)
-                        }
+                        if ((loggedIn || bridge.hasLoginCookie()) && top is Screen.WebLogin) onLoggedIn()
                     }
                 }
                 Screen.Challenge -> if (!bridge.isChallengePage() && top == Screen.Challenge) stack.removeAt(stack.lastIndex)

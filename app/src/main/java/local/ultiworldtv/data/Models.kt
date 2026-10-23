@@ -63,4 +63,14 @@ sealed interface PlaybackResult {
     data object Missing : PlaybackResult
 }
 
+sealed interface LoginResult {
+    data object Success : LoginResult
+
+    /** Ultiworld said no, e.g. a wrong password. [message] is Ultiworld's own wording when there is one. */
+    data class Failed(val message: String) : LoginResult
+
+    /** Ultiworld wants something the app can't do for you (a captcha, a changed page): use its own page. */
+    data class NeedsWebPage(val reason: String) : LoginResult
+}
+
 data class HeartbeatResult(val sessionValid: Boolean, val stopStreaming: Boolean)

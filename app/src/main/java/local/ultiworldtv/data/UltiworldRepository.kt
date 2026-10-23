@@ -4,8 +4,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import local.ultiworldtv.bridge.BridgeException
+import local.ultiworldtv.bridge.ChallengeRequiredException
 import local.ultiworldtv.bridge.Scripts
 import local.ultiworldtv.bridge.WebBridge
+import org.json.JSONObject
 
 /** Everything the app asks of Ultiworld, run through the one [WebBridge] page. */
 class UltiworldRepository(private val bridge: WebBridge, private val scope: CoroutineScope) {
@@ -14,6 +17,38 @@ class UltiworldRepository(private val bridge: WebBridge, private val scope: Coro
     suspend fun start(): Boolean = bridge.session {
         load(VIDEO_LIBRARY_URL)
         evaluate(Scripts.IS_LOGGED_IN) == true || hasLoginCookie()
+    }
+
+    /**
+     * Logs in through Ultiworld's own login form: the app fills it in and submits it in the WebView, so it is
+     * the site's normal login. Only the resulting cookie is kept; the password is never stored.
+     */
+    suspend fun logIn(username: String, password: String): LoginResult = bridge.session {
+        try {
+            load(LOGIN_URL)
+            val form = evaluate(Scripts.LOGIN_FORM_STATE) as? JSONObject
+            when {
+                form?.optBoolean("hasForm") != true ->
+                    return@session LoginResult.NeedsWebPage("Ultiworld's login page looks different than the app expects.")
+                form.optBoolean("humanCheck") ->
+                    return@session LoginResult.NeedsWebPage("Ultiworld wants to confirm you're human on its own login page.")
+            }
+            evaluateAndAwaitNavigation(Scripts.submitLogin(username, password))
+            if (currentUrl.value.orEmpty().contains("wp-login.php")) {
+                val message = evaluate(Scripts.LOGIN_ERROR) as? String
+                return@session LoginResult.Failed(message?.takeIf { it.isNotBlank() } ?: "Ultiworld didn't accept that email and password.")
+            }
+            if (hasLoginCookie() || evaluate(Scripts.IS_LOGGED_IN) == true) {
+                flushCookies()
+                LoginResult.Success
+            } else {
+                LoginResult.Failed("The login didn't go through. Try again.")
+            }
+        } catch (e: ChallengeRequiredException) {
+            LoginResult.NeedsWebPage("Ultiworld is checking this TV on its own page.")
+        } catch (e: BridgeException) {
+            LoginResult.Failed(e.message ?: "Couldn't reach Ultiworld.")
+        }
     }
 
     suspend fun library(): Library = bridge.session {

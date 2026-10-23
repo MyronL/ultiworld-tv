@@ -122,12 +122,24 @@ class WebBridge(context: Context) {
      * Throws [ChallengeRequiredException] when Cloudflare is still asking after [challengeWaitMs].
      */
     suspend fun load(url: String, timeoutMs: Long = 30_000, challengeWaitMs: Long = 20_000) {
-        withContext(Dispatchers.Main) {
-            val before = pageLoads.value
-            webView.loadUrl(url)
-            withTimeoutOrNull(timeoutMs) { pageLoads.first { it > before } }
-                ?: throw BridgeException("Ultiworld took too long to load")
-        }
+        val before = pageLoads.value
+        withContext(Dispatchers.Main) { webView.loadUrl(url) }
+        awaitPageLoad(before, timeoutMs, challengeWaitMs)
+    }
+
+    /**
+     * Runs [script], which starts a navigation of its own (submitting a form, say), and waits for the page
+     * it leads to, the same way [load] does.
+     */
+    suspend fun evaluateAndAwaitNavigation(script: String, timeoutMs: Long = 30_000, challengeWaitMs: Long = 20_000) {
+        val before = pageLoads.value
+        evaluate(script)
+        awaitPageLoad(before, timeoutMs, challengeWaitMs)
+    }
+
+    private suspend fun awaitPageLoad(after: Int, timeoutMs: Long, challengeWaitMs: Long) {
+        withTimeoutOrNull(timeoutMs) { pageLoads.first { it > after } }
+            ?: throw BridgeException("Ultiworld took too long to load")
         val deadline = System.currentTimeMillis() + challengeWaitMs
         while (isChallengePage()) {
             if (System.currentTimeMillis() > deadline) throw ChallengeRequiredException()

@@ -16,6 +16,15 @@ Unofficial and for personal use. It is not affiliated with Ultiworld and isn't m
 - **Games with two streams** (a game's own camera and the shared Field Pass): pick one.
 - **Player**: full screen, with the remote's play/pause and left/right seeking. Live games can be rewound.
 
+## Logging in from a phone
+
+The login screen shows a QR code for a small page served by the TV itself, on your home network, while that
+screen is open: `http://<tv>:8765/?k=<one-time code>`
+([`PhoneLoginServer`](app/src/main/java/local/ultiworldtv/login/PhoneLoginServer.kt)). What you type there
+goes through the same login as the TV's form. Requests without the code are refused, it takes 8 tries at
+most, and it stops after a successful login or when you leave the screen. It's plain HTTP inside your home
+network, so the login crosses your Wi-Fi unencrypted.
+
 ## How it works
 
 Ultiworld is a WordPress site behind Cloudflare, so a plain HTTP client gets turned away. The app keeps one
@@ -24,7 +33,7 @@ does everything from inside it, the way the website itself does:
 
 | Need | Where it comes from |
 |---|---|
-| Login | Ultiworld's own login page, shown in the WebView; the cookie is kept |
+| Login | the app's own form (or a phone, below) fills in and submits Ultiworld's real login form in the WebView; only the cookie is kept. Ultiworld's page itself is the fallback |
 | Library rows | `/video/`, read from the page (`.video-grid`) |
 | An event's or pack's videos | `/video/?event=…` and friends, fetched and read the same way |
 | Scores | the public JSON feed behind the site's score bar, `/wp-json/uw/v1/scorebar/` |
@@ -47,7 +56,8 @@ You need JDK 17 and the Android SDK at `/opt/homebrew/share/android-commandlinet
    ./install.sh
    ```
 
-3. On the TV, log in once with your Ultiworld account. ▲ ▼ moves between fields, OK opens the keyboard.
+3. On the TV, log in once with your Ultiworld account: type it with the remote (OK on a field opens the
+   keyboard), or scan the QR code with your phone and type it there.
 4. Turn USB debugging off again if you like. The app stays installed and logged in.
 
 `TV_HOST` defaults to `192.168.1.50`. Set it if the TV's address changes.
