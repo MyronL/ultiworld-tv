@@ -2,6 +2,9 @@ package local.ultiworldtv.player
 
 import android.view.View
 import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,6 +38,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -48,6 +52,7 @@ import local.ultiworldtv.ui.Palette
 /** The site's own check-in timing: every 80 seconds while streaming, every 5 minutes otherwise. */
 private const val HEARTBEAT_STREAMING_MS = 80_000L
 private const val HEARTBEAT_IDLE_MS = 300_000L
+private const val TITLE_INTRO_MS = 2_000L
 
 private sealed interface PlayerState {
     data object Loading : PlayerState
@@ -128,7 +133,13 @@ private fun VideoPlayer(
     val context = LocalContext.current
     // "Streaming" the way the site counts it: from play until pause, end or error, buffering included.
     val streaming = remember(playback) { MutableStateFlow(false) }
-    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsVisible by remember { mutableStateOf(false) }
+    // The title shows for a moment when a video starts, then only along with the player controls.
+    var introTitle by remember(playback) { mutableStateOf(true) }
+    LaunchedEffect(playback) {
+        delay(TITLE_INTRO_MS)
+        introTitle = false
+    }
 
     val player = remember(playback) {
         val http = DefaultHttpDataSource.Factory()
@@ -217,13 +228,17 @@ private fun VideoPlayer(
                 }
             }
         )
-        if (controlsVisible) {
+        AnimatedVisibility(
+            visible = controlsVisible || introTitle,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopStart)
+        ) {
             Box(
                 Modifier
                     .fillMaxWidth()
                     .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
                     .padding(horizontal = 48.dp, vertical = 28.dp)
-                    .align(Alignment.TopStart)
             ) {
                 Text(playback.title, style = MaterialTheme.typography.headlineSmall, color = Palette.Text)
             }
