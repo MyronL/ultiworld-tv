@@ -1,25 +1,104 @@
+// Draws the Android TV launcher banner as a vector drawable, so it stays sharp at whatever size a launcher shows it.
+// The lettering is turned into outlines here, on a Mac, so the TV needs no fonts.
+//
+//   swift tools/banner.swift app/src/main/res/drawable/banner.xml
 import AppKit
-let args = CommandLine.arguments
-let out = args[1]
-let w = 320, h = 180
-let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
-NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-let bg = NSColor(red: 0x0E/255, green: 0x11/255, blue: 0x16/255, alpha: 1)
-bg.setFill(); NSRect(x: 0, y: 0, width: w, height: h).fill()
-// red band along the bottom, like the site's nav bar
-NSColor(red: 0xD2/255, green: 0x23/255, blue: 0x2A/255, alpha: 1).setFill()
-NSRect(x: 0, y: 0, width: w, height: 10).fill()
-// disc
-let red = NSColor(red: 0xD2/255, green: 0x23/255, blue: 0x2A/255, alpha: 1)
-let teal = NSColor(red: 0x00/255, green: 0x83/255, blue: 0x92/255, alpha: 1)
-red.setFill(); NSBezierPath(ovalIn: NSRect(x: 24, y: 58, width: 72, height: 72)).fill()
-teal.setFill(); NSBezierPath(ovalIn: NSRect(x: 36, y: 70, width: 48, height: 48)).fill()
-func draw(_ s: String, _ size: CGFloat, _ weight: NSFont.Weight, _ color: NSColor, _ x: CGFloat, _ y: CGFloat, kern: CGFloat = 0) {
-  let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color, .kern: kern]
-  NSAttributedString(string: s, attributes: attrs).draw(at: NSPoint(x: x, y: y))
+import CoreText
+
+let out = CommandLine.arguments[1]
+// 320 x 180 units for the 160 x 90 dp banner. Launchers round the corners and some crop a little, so everything
+// stays inside a centred safe area.
+let w: CGFloat = 320, h: CGFloat = 180
+
+struct Run { let text: String; let size: CGFloat; let weight: NSFont.Weight; let kern: CGFloat; let color: String }
+
+/// The outline of [run] as path data, with its baseline-left corner at (x, y) in a y-down coordinate system.
+func pathData(_ run: Run, x: CGFloat, y: CGFloat) -> String {
+    let font = NSFont.systemFont(ofSize: run.size, weight: run.weight)
+    let attributed = NSAttributedString(string: run.text, attributes: [.font: font, .kern: run.kern])
+    let line = CTLineCreateWithAttributedString(attributed)
+    var d = ""
+    let f = { (v: CGFloat) in String(format: "%.2f", v) }
+    for glyphRun in CTLineGetGlyphRuns(line) as! [CTRun] {
+        let count = CTRunGetGlyphCount(glyphRun)
+        var glyphs = [CGGlyph](repeating: 0, count: count)
+        var positions = [CGPoint](repeating: .zero, count: count)
+        CTRunGetGlyphs(glyphRun, CFRange(location: 0, length: count), &glyphs)
+        CTRunGetPositions(glyphRun, CFRange(location: 0, length: count), &positions)
+        let runFont = (CTRunGetAttributes(glyphRun) as NSDictionary)[kCTFontAttributeName] as! CTFont
+        for i in 0..<count {
+            guard let glyph = CTFontCreatePathForGlyph(runFont, glyphs[i], nil) else { continue }
+            let ox = x + positions[i].x
+            // Font outlines are y-up; the drawable is y-down.
+            let p = { (pt: CGPoint) in "\(f(ox + pt.x)),\(f(y - pt.y))" }
+            glyph.applyWithBlock { element in
+                let e = element.pointee
+                switch e.type {
+                case .moveToPoint: d += "M\(p(e.points[0]))"
+                case .addLineToPoint: d += "L\(p(e.points[0]))"
+                case .addQuadCurveToPoint: d += "Q\(p(e.points[0])) \(p(e.points[1]))"
+                case .addCurveToPoint: d += "C\(p(e.points[0])) \(p(e.points[1])) \(p(e.points[2]))"
+                case .closeSubpath: d += "Z"
+                @unknown default: break
+                }
+            }
+        }
+    }
+    return d
 }
-draw("ULTIWORLD", 34, .heavy, .white, 108, 86, kern: 0.5)
-draw("TV", 26, .bold, teal, 110, 54, kern: 2)
-NSGraphicsContext.restoreGraphicsState()
-try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: out))
+
+func width(_ run: Run) -> CGFloat {
+    let font = NSFont.systemFont(ofSize: run.size, weight: run.weight)
+    let line = CTLineCreateWithAttributedString(NSAttributedString(string: run.text, attributes: [.font: font, .kern: run.kern]))
+    // The kern after the last letter isn't part of the word.
+    return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)) - run.kern
+}
+
+let name = Run(text: "ULTIWORLD", size: 34, weight: .heavy, kern: 0.4, color: "#FFFFFF")
+let tv = Run(text: "TV", size: 25, weight: .bold, kern: 1.5, color: "#00A3B4")
+let unofficial = Run(text: "UNOFFICIAL", size: 14, weight: .semibold, kern: 1.6, color: "#C2C8CF")
+
+// A flying disc, then the name; the whole group centred.
+let disc: CGFloat = 66, gap: CGFloat = 15
+let textWidth = max(width(name), width(tv) + 10 + width(unofficial))
+let left = ((w - (disc + gap + textWidth)) / 2).rounded()
+precondition(left >= 18, "the banner's content no longer fits inside its margins")
+let cy = h / 2
+let textX = left + disc + gap
+let nameBaseline = cy + 3, tvBaseline = cy + 34
+
+func circle(_ cx: CGFloat, _ cy: CGFloat, _ r: CGFloat) -> String {
+    "M\(cx - r),\(cy)a\(r),\(r) 0,1 0,\(2 * r),0a\(r),\(r) 0,1 0,\(-2 * r),0z"
+}
+
+let paths: [(String, String)] = [
+    ("#D2232A", circle(left + disc / 2, cy, disc / 2)),
+    ("#008392", circle(left + disc / 2, cy, disc / 2 - 11)),
+    (name.color, pathData(name, x: textX, y: nameBaseline)),
+    (tv.color, pathData(tv, x: textX, y: tvBaseline)),
+    (unofficial.color, pathData(unofficial, x: textX + width(tv) + 10, y: tvBaseline - 1)),
+]
+
+var xml = """
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated by tools/banner.swift; edit that and run it again rather than editing this. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="160dp"
+    android:height="90dp"
+    android:viewportWidth="\(Int(w))"
+    android:viewportHeight="\(Int(h))">
+    <path
+        android:fillColor="#0E1116"
+        android:pathData="M0,0h\(Int(w))v\(Int(h))h-\(Int(w))z" />
+
+"""
+for (color, d) in paths {
+    xml += """
+        <path
+            android:fillColor="\(color)"
+            android:pathData="\(d)" />
+
+    """
+}
+xml += "</vector>\n"
+try! xml.write(toFile: out, atomically: true, encoding: .utf8)

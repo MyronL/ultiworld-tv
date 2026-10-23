@@ -5,3 +5,12 @@ local.properties
 .idea/
 *.iml
 .DS_Store
+.vscode/
+captures/
+.cxx/
+*.hprof
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties

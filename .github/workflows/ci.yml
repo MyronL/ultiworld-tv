@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Also checks that gradle/wrapper/gradle-wrapper.jar is an official Gradle release.
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Style, unit tests, Android lint and a debug build
+        run: ./gradlew ktlintCheck testDebugUnitTest lintDebug assembleDebug
+
+      # The unit tests write every page script out as plain JavaScript; make sure each one still parses.
+      - name: Page scripts parse
+        run: for f in app/build/scripts/*.js; do node --check "$f"; done
+
+      - name: Lint report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
