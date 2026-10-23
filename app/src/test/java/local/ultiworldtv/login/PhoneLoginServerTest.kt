@@ -3,6 +3,7 @@ package local.ultiworldtv.login
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,8 +19,9 @@ class PhoneLoginServerTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val received = mutableListOf<Pair<String, String>>()
     private var answer: LoginResult = LoginResult.Success
+    private val lockouts = AtomicInteger(0)
 
-    private val server = PhoneLoginServer(scope, preferredPort = 0) { u, p ->
+    private val server = PhoneLoginServer(scope, preferredPort = 0, onLockedOut = { lockouts.incrementAndGet() }) { u, p ->
         synchronized(received) { received += u to p }
         answer
     }
@@ -100,6 +102,10 @@ class PhoneLoginServerTest {
         repeat(PhoneLoginServer.MAX_ATTEMPTS) { post("/?k=${server.code}", mapOf("username" to "u", "password" to "p")) }
         assertEquals(429, post("/?k=${server.code}", mapOf("username" to "u", "password" to "p")).first)
         assertEquals(PhoneLoginServer.MAX_ATTEMPTS, received.size)
+        // The TV hears about it once, so it can stop showing a code that no longer works.
+        assertEquals(1, lockouts.get())
+        assertTrue(runCatching { get("/?k=${server.code}") }.isFailure)
+        assertEquals(1, lockouts.get())
     }
 
     @Test

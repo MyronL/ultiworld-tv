@@ -39,6 +39,7 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -187,9 +188,16 @@ private fun VideoPlayer(
     }
 
     LaunchedEffect(player) {
+        val missed = MissedCheckIns()
         while (true) {
             val now = streaming.value
-            val result = runCatching { repo.heartbeat(streaming = now) }.getOrNull()
+            val result = try {
+                repo.heartbeat(streaming = now)
+            } catch (e: Exception) {
+                // Leaving the player cancels this loop, and that isn't a failed check-in.
+                ensureActive()
+                null
+            }
             if (result != null && !result.sessionValid) {
                 player.stop()
                 onSessionExpired()
@@ -199,6 +207,18 @@ private fun VideoPlayer(
                 player.stop()
                 onFailed(
                     PlayerState.Failed("Streaming on too many devices", "Stop watching on another device, then try again.", canRetry = true)
+                )
+                return@LaunchedEffect
+            }
+            if (missed.record(checkedIn = result?.checkedIn == true)) {
+                player.stop()
+                onFailed(
+                    PlayerState.Failed(
+                        "Lost touch with Ultiworld",
+                        "Ultiworld needs to hear from this TV while you watch, and it hasn't for a few minutes. " +
+                            "Check the TV's internet connection, then try again.",
+                        canRetry = true
+                    )
                 )
                 return@LaunchedEffect
             }

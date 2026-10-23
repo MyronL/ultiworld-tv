@@ -136,7 +136,15 @@ class MainActivity : ComponentActivity() {
         var picker by remember { mutableStateOf<Game?>(null) }
         var confirmSignOut by remember { mutableStateOf(false) }
 
-        LaunchedEffect(screen) { showWeb(screen) }
+        LaunchedEffect(screen) {
+            showWeb(screen)
+            // Leaving the screen cancels this, which hands the page back to the app.
+            when (screen) {
+                is Screen.WebLogin -> bridge.holdForUser(UltiworldRepository.LOGIN_URL)
+                Screen.Challenge -> bridge.holdForUser()
+                else -> Unit
+            }
+        }
 
         when (screen) {
             Screen.Starting -> {
@@ -276,7 +284,6 @@ class MainActivity : ComponentActivity() {
             Screen.Challenge -> "Ultiworld is checking this TV.  If a box appears, move to it and press OK."
             else -> ""
         }
-        if (screen is Screen.WebLogin) bridge.webView.loadUrl(UltiworldRepository.LOGIN_URL)
         if (web) bridge.webView.requestFocus() else composeView.requestFocus()
     }
 

@@ -23,7 +23,7 @@ import local.ultiworldtv.data.LoginResult
  * The TV shows a QR code for `http://<tv>:<port>/?k=<code>`. The phone gets a login form from this server,
  * and what it submits goes to [onCredentials], the same login the TV's own form uses. It's for the home
  * network only and lives as long as the login screen: every request must carry the one-time [code], it
- * accepts [MAX_ATTEMPTS] tries, and it shuts down after a successful login. Plain HTTP on the LAN, so the
+ * accepts [MAX_ATTEMPTS] tries (then stops and calls [onLockedOut]), and it shuts down after a successful login. Plain HTTP on the LAN, so the
  * login crosses your Wi-Fi unencrypted (as with any device on the network you set up from a phone).
  */
 class PhoneLoginServer(
@@ -31,6 +31,11 @@ class PhoneLoginServer(
     private val preferredPort: Int = DEFAULT_PORT,
     /** The TV's home-network address, so the server isn't reachable on other interfaces (a VPN, say). Null: all of them. */
     private val bindAddress: InetAddress? = null,
+    /**
+     * Called once, off the main thread, when the server stops itself after too many tries. The code on the
+     * TV no longer works, so the screen should stop showing it (or start a new server with a new code).
+     */
+    private val onLockedOut: () -> Unit = {},
     private val onCredentials: suspend (username: String, password: String) -> LoginResult
 ) {
     val code: String = newCode()
@@ -114,9 +119,11 @@ class PhoneLoginServer(
     }
 
     private suspend fun submit(request: Request): Response {
-        if (attempts.incrementAndGet() > MAX_ATTEMPTS) {
+        val attempt = attempts.incrementAndGet()
+        if (attempt > MAX_ATTEMPTS) {
             stop()
-            return Response(429, page("Too many tries", "<p>Start the login again on the TV to get a new code.</p>"))
+            if (attempt == MAX_ATTEMPTS + 1) onLockedOut()
+            return Response(429, page("Too many tries", "<p>The TV is showing a new code. Scan it to try again.</p>"))
         }
         val form = parseForm(request.body)
         val username = form["username"].orEmpty().trim()

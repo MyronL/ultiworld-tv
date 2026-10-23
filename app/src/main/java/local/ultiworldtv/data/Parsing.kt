@@ -126,8 +126,12 @@ object Parsing {
     }
 
     fun heartbeat(v: Any?): HeartbeatResult {
-        val o = v as? JSONObject ?: return HeartbeatResult(sessionValid = true, stopStreaming = false)
-        return HeartbeatResult(sessionValid = o.optBoolean("sessionValid", true), stopStreaming = o.optBoolean("stopStreaming"))
+        val o = v as? JSONObject ?: return HeartbeatResult(sessionValid = true, stopStreaming = false, checkedIn = false)
+        return HeartbeatResult(
+            sessionValid = o.optBoolean("sessionValid", true),
+            stopStreaming = o.optBoolean("stopStreaming"),
+            checkedIn = o.optInt("status") in 200..299
+        )
     }
 
     private fun parseTime(s: String): OffsetDateTime? = try {

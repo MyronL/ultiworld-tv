@@ -19,6 +19,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -116,6 +117,16 @@ class WebBridge(context: Context) {
 
     /** Runs [block] with exclusive use of the page, so a navigation never lands in the middle of another call. */
     suspend fun <T> session(block: suspend WebBridge.() -> T): T = mutex.withLock { block() }
+
+    /**
+     * Hands the page to the person at the remote until cancelled: while it's on screen for logging in or
+     * Cloudflare's check, every [session] waits, so background work (a check-in as the player closes, a
+     * feed loading) can't navigate away mid-form. Opens [url] first, once any call already running finishes.
+     */
+    suspend fun holdForUser(url: String? = null): Nothing = mutex.withLock {
+        if (url != null) withContext(Dispatchers.Main) { webView.loadUrl(url) }
+        awaitCancellation()
+    }
 
     /**
      * Navigates and waits until a real Ultiworld page (not Cloudflare's "Just a moment...") has loaded.

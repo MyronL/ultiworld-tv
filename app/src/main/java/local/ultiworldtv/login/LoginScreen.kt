@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,9 +64,15 @@ fun LoginScreen(model: LoginModel, onResult: (LoginResult) -> Unit, onUseWebPage
 
     val address = remember { lanAddress(context) }
     var phoneUrl by remember { mutableStateOf<String?>(null) }
-    DisposableEffect(address) {
+    // Bumped when the phone server locks itself out after too many tries, to start a new one with a new code.
+    var phoneServerRun by remember { mutableIntStateOf(0) }
+    DisposableEffect(address, phoneServerRun) {
         val server = address?.let {
-            PhoneLoginServer(appScope, bindAddress = InetAddress.getByName(it)) { u, p ->
+            PhoneLoginServer(
+                appScope,
+                bindAddress = InetAddress.getByName(it),
+                onLockedOut = { appScope.launch { phoneServerRun++ } }
+            ) { u, p ->
                 model.logIn(u, p, viaPhone = true).also { result -> withContext(Dispatchers.Main) { onResult(result) } }
             }
         }
