@@ -6,6 +6,7 @@ import io.github.myronl.ultiworldtv.bridge.Scripts
 import io.github.myronl.ultiworldtv.bridge.WebBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -26,7 +27,12 @@ class UltiworldRepository(private val bridge: WebBridge, private val scope: Coro
     suspend fun logIn(username: String, password: String): LoginResult = bridge.session {
         try {
             load(LOGIN_URL)
-            val form = evaluate(Scripts.LOGIN_FORM_STATE) as? JSONObject
+            // Straight after Cloudflare's check the login page may still be loading, so wait for the form, then
+            // give it one fresh load, before deciding the page has changed.
+            val form = loginForm() ?: run {
+                load(LOGIN_URL)
+                loginForm()
+            }
             when {
                 form?.optBoolean("hasForm") != true ->
                     return@session LoginResult.Failed("Ultiworld's login page has changed, so the app can't log in right now.")
@@ -123,6 +129,21 @@ class UltiworldRepository(private val bridge: WebBridge, private val scope: Coro
      */
     suspend fun forgetLogin() = bridge.session { clearSession() }
 
+    /** The login form's state once the page shows it, asked for a few seconds; null if it never does. */
+    private suspend fun WebBridge.loginForm(): JSONObject? {
+        repeat(LOGIN_FORM_TRIES) {
+            val form = try {
+                evaluate(Scripts.LOGIN_FORM_STATE) as? JSONObject
+            } catch (e: BridgeException) {
+                // A page mid-navigation may not answer.
+                null
+            }
+            if (form?.optBoolean("hasForm") == true) return form
+            delay(500)
+        }
+        return null
+    }
+
     private suspend fun WebBridge.ensureOnSite() {
         val url = currentUrl.value
         if (!WebBridge.isOnSite(url) || isChallengePage()) load(VIDEO_LIBRARY_URL)
@@ -141,6 +162,7 @@ class UltiworldRepository(private val bridge: WebBridge, private val scope: Coro
     }
 
     companion object {
+        private const val LOGIN_FORM_TRIES = 10
         const val VIDEO_LIBRARY_URL = "https://ultiworld.com/video/"
         const val LOGIN_URL = "https://ultiworld.com/wordpress/wp-login.php?redirect_to=https%3A%2F%2Fultiworld.com%2Fvideo%2F"
     }
