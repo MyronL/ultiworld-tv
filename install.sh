@@ -4,7 +4,7 @@
 # First turn on the TV's developer options (Settings > System > About > tap "Android TV OS build" 7 times; on
 # older Android TV, Settings > Device Preferences > About > Build), then Developer options > USB debugging (or
 # "Network debugging"). The first install asks on the TV to allow this computer; tick "Always allow" and later
-# installs don't ask again. A TV with "Wireless debugging" needs `adb pair` once first; see the README.
+# installs don't ask again. A TV with "Wireless debugging" needs `adb pair` once first; see docs/building.md.
 #
 #   TV_HOST=192.168.1.50 ./install.sh              build a release APK, install it, open it
 #   TV_HOST=192.168.1.50 ./install.sh --no-build   install the APK from the last build
