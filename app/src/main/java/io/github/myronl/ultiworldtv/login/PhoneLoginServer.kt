@@ -72,6 +72,9 @@ class PhoneLoginServer(
     @Volatile
     private var finished = false
 
+    @Volatile
+    private var stopped = false
+
     /** Starts listening on [preferredPort], or any free port if that one's taken. Returns the port. */
     fun start(): Int {
         val socket = try {
@@ -86,6 +89,11 @@ class PhoneLoginServer(
                 val client = try {
                     socket.accept()
                 } catch (e: IOException) {
+                    break
+                }
+                // A connection that arrives as the server stops can still come out of accept(); turn it away.
+                if (stopped) {
+                    runCatching { client.close() }
                     break
                 }
                 // A phone needs one or two connections; more at once is someone tying the server up. The cap per
@@ -123,6 +131,7 @@ class PhoneLoginServer(
     fun link(host: String): String = "http://$host:$port/?k=$code#${base64(key)}"
 
     fun stop() {
+        stopped = true
         runCatching { server?.close() }
         server = null
     }
