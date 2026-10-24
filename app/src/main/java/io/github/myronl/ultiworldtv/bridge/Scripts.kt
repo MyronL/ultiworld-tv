@@ -75,12 +75,17 @@ object Scripts {
      * Fills in the login form and submits it. The submit runs after this returns, because the page is
      * replaced by the next one and could not answer afterwards. Ticks "Remember Me" so the login lasts.
      * Refuses unless the page is still Ultiworld's login page, so the password can't land anywhere else.
+     *
+     * Ultiworld's Wordfence plugin catches the submit and checks the password in the background first. A
+     * good one goes on to submit the form; a wrong one only gets a message on this page (see [LOGIN_ERROR]).
+     * Any message already on the page is cleared first, so a message seen afterwards answers this submit.
      */
     fun submitLogin(username: String, password: String) = """
         if (location.origin !== ${JSONObject.quote(WebBridge.ORIGIN)} || location.pathname.indexOf('wp-login.php') === -1) {
           throw new Error("Ultiworld's login page went away. Try again.");
         }
         const form = document.querySelector('#loginform');
+        document.querySelectorAll('#login_error, .wfls-login-message').forEach((e) => e.remove());
         const set = (sel, v) => {
           const el = form.querySelector(sel);
           el.focus();
@@ -97,13 +102,21 @@ object Scripts {
         return true;
     """
 
-    /** WordPress's message after a failed login, without its "Lost your password?" link. */
+    /**
+     * WordPress's message after a failed login, without its "Lost your password?" link. Also Wordfence's
+     * messages, which it puts on the login page without leaving it: a wrong password, or "check your email"
+     * when it wants this device confirmed. Only the first paragraph: Wordfence follows a wrong password with
+     * advice to reset it on the website, which runs off the TV's screen.
+     */
     const val LOGIN_ERROR = """
-        const e = document.querySelector('#login_error, .login .message.error, .notice-error');
+        const e = document.querySelector('#login_error, .wfls-login-message, .login .message.error, .notice-error');
         if (!e) return null;
         const c = e.cloneNode(true);
         c.querySelectorAll('a').forEach((a) => { if (/lost your password/i.test(a.textContent)) a.remove(); });
-        return c.textContent.replace(/\s+/g, ' ').replace(/^Error:\s*/i, '').trim();
+        // Paragraphs are split by a blank line (<br><br>); a single <br> separates errors and stays.
+        c.querySelectorAll('br').forEach((br) => br.replaceWith('\u0000'));
+        const first = c.textContent.split(/\u0000\s*\u0000/).map((s) => s.replace(/[\s\u0000]+/g, ' ').trim()).find(Boolean) || '';
+        return first.replace(/^Error:\s*/i, '') || null;
     """
 
     /** The site's own logout link (it carries WordPress's nonce). The site's scripts add it after load, so wait a little. */

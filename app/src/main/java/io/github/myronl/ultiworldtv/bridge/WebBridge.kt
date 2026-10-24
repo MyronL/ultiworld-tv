@@ -165,18 +165,36 @@ class WebBridge(context: Context) {
     }
 
     /**
-     * Runs [script], which starts a navigation of its own (submitting a form, say), and waits for the page
-     * it leads to, the same way [load] does.
+     * Runs [script], which submits a form, and waits for the form's answer. A form that leads to a new page
+     * is waited for the same way [load] waits, and this returns null. A form that answers on the page itself
+     * (a script that checks it in the background, say) returns the first non-null thing [inPageAnswer] reads there.
      */
-    suspend fun evaluateAndAwaitNavigation(script: String, timeoutMs: Long = 30_000, challengeWaitMs: Long = 20_000) {
+    suspend fun submitAndAwait(script: String, inPageAnswer: String, timeoutMs: Long = 30_000, challengeWaitMs: Long = 20_000): Any? {
         val before = pageLoads.value
         evaluate(script)
-        awaitPageLoad(before, timeoutMs, challengeWaitMs)
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (withTimeoutOrNull(500) { pageLoads.first { it > before } } == null) {
+            // Asked again every half second. A page mid-navigation may not answer; the next page load ends the wait.
+            val answer = try {
+                evaluate(inPageAnswer, timeoutMs = 2_000)
+            } catch (e: BridgeException) {
+                null
+            }
+            if (answer != null) return answer
+            if (System.currentTimeMillis() > deadline) throw BridgeException("Ultiworld took too long to load")
+        }
+        settle(challengeWaitMs)
+        return null
     }
 
     private suspend fun awaitPageLoad(after: Int, timeoutMs: Long, challengeWaitMs: Long) {
         withTimeoutOrNull(timeoutMs) { pageLoads.first { it > after } }
             ?: throw BridgeException("Ultiworld took too long to load")
+        settle(challengeWaitMs)
+    }
+
+    /** After a page load: fails for the WebView's own error page, and waits out a Cloudflare check. */
+    private suspend fun settle(challengeWaitMs: Long) {
         // No network, DNS failure and the like: the WebView shows its own error page, which is no Cloudflare check.
         loadError?.let { throw BridgeException("Couldn't reach Ultiworld ($it). Check the TV's internet connection.") }
         val deadline = System.currentTimeMillis() + challengeWaitMs

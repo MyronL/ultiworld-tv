@@ -36,7 +36,9 @@ class UltiworldRepository(private val bridge: WebBridge, private val scope: Coro
                         "Ultiworld's login page wants a human check, which the app can't do. Try again later."
                     )
             }
-            evaluateAndAwaitNavigation(Scripts.submitLogin(username, password))
+            // A wrong password stays on the login page with a message (see Scripts.submitLogin).
+            val inPage = submitAndAwait(Scripts.submitLogin(username, password), inPageAnswer = Scripts.LOGIN_ERROR) as? String
+            if (inPage != null) return@session LoginResult.Failed(inPage)
             if (currentUrl.value.orEmpty().contains("wp-login.php")) {
                 val message = evaluate(Scripts.LOGIN_ERROR) as? String
                 return@session LoginResult.Failed(message?.takeIf { it.isNotBlank() } ?: "Ultiworld didn't accept that email and password.")
