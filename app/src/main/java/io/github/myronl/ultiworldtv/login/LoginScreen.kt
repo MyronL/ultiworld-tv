@@ -78,7 +78,12 @@ fun LoginScreen(model: LoginModel, onResult: (LoginResult) -> Unit) {
                 model.logIn(u, p, viaPhone = true).also { result -> withContext(Dispatchers.Main) { onResult(result) } }
             }
         }
-        phoneUrl = server?.let { "http://$address:${it.start()}/?k=${it.code}" }
+        phoneUrl = if (server != null && address != null) {
+            server.start()
+            server.link(address)
+        } else {
+            null
+        }
         onDispose { server?.stop() }
     }
 
@@ -159,6 +164,7 @@ private fun PhonePanel(url: String, modifier: Modifier = Modifier) {
             color = Palette.TextMuted
         )
         Spacer(Modifier.height(8.dp))
-        Text(url.removePrefix("http://"), style = MaterialTheme.typography.bodySmall, color = Palette.Teal)
+        // Without the key after the #: typed by hand, the link only says to scan the code.
+        Text(url.substringBefore('#').removePrefix("http://"), style = MaterialTheme.typography.bodySmall, color = Palette.Teal)
     }
 }

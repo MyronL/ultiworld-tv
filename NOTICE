@@ -1,0 +1,10 @@
+Ultiworld TV
+Copyright (c) 2026 Myron Loke. MIT License, see LICENSE.
+
+It includes this third-party code:
+
+@noble/ciphers 2.4.0, by Paul Miller. MIT License, see app/src/main/resources/phonelogin/noble-ciphers/LICENSE.
+  The phone login page uses it to encrypt the login (AES-GCM). utils.js, _polyval.js (stored as polyval.js, as
+  Android leaves out files whose names start with _) and aes.js are unchanged from the npm package:
+  https://registry.npmjs.org/@noble/ciphers/-/ciphers-2.4.0.tgz
+  (integrity sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==).

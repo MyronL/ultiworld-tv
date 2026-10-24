@@ -8,10 +8,16 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import java.nio.ByteBuffer
+import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -21,12 +27,19 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * A tiny web server on the TV, so you can type your Ultiworld login on your phone instead of with the remote.
  *
- * The TV shows a QR code for `http://<tv>:<port>/?k=<code>`. The phone gets a login form from this server,
- * and what it submits goes to [onCredentials], the same login the TV's own form uses. It's for the home
- * network only and lives as long as the login screen: every request must carry the one-time [code], it
+ * The TV shows a QR code for `http://<tv>:<port>/?k=<code>#<key>` ([link]). The phone gets a login form from
+ * this server, and what it submits goes to [onCredentials], the same login the TV's own form uses. It's for the
+ * home network only and lives as long as the login screen: every request must carry the one-time [code], it
  * accepts [MAX_ATTEMPTS] tries (then stops and calls [onLockedOut]), and it shuts down after a successful login.
- * Plain HTTP on the LAN, so the login crosses your Wi-Fi unencrypted (as with any device on the network you set
- * up from a phone).
+ *
+ * It's plain HTTP, so the page encrypts the login before sending it. The key is a random one for each server,
+ * after the `#` in the link; browsers don't send that part, so it goes from the TV's screen to the phone's camera
+ * and nowhere else. The page seals the email and password with it (AES-256-GCM, with [code] as associated data)
+ * and posts only that. The server never takes them as plain form fields, and turns down a nonce it has seen.
+ *
+ * This stops anyone just listening on the Wi-Fi. It doesn't stop someone on the network who tampers with the
+ * page as it loads: they could swap in a script that sends the login to them. Only HTTPS would, and a TV can't
+ * have a certificate a phone trusts.
  */
 class PhoneLoginServer(
     private val scope: CoroutineScope,
@@ -42,6 +55,9 @@ class PhoneLoginServer(
 ) {
     val code: String = newCode()
 
+    // In memory only, and never logged: anyone with it can read a login sent to this server.
+    private val key = ByteArray(KEY_BYTES).also { SecureRandom().nextBytes(it) }
+
     @Volatile
     var port: Int = 0
         private set
@@ -51,6 +67,7 @@ class PhoneLoginServer(
     private val attempts = AtomicInteger(0)
     private val clients = AtomicInteger(0)
     private val clientsByHost = ConcurrentHashMap<InetAddress, AtomicInteger>()
+    private val nonces = ConcurrentHashMap.newKeySet<ByteBuffer>()
 
     @Volatile
     private var finished = false
@@ -102,6 +119,9 @@ class PhoneLoginServer(
         return port
     }
 
+    /** The link for the QR code, once [start]ed. The key is after the `#`, which the phone's browser doesn't send. */
+    fun link(host: String): String = "http://$host:$port/?k=$code#${base64(key)}"
+
     fun stop() {
         runCatching { server?.close() }
         server = null
@@ -135,9 +155,10 @@ class PhoneLoginServer(
             if (attempt == MAX_ATTEMPTS + 1) onLockedOut()
             return Response(429, page("Too many tries", "<p>The TV is showing a new code. Scan it to try again.</p>"))
         }
-        val form = parseForm(request.body)
-        val username = form["username"].orEmpty().trim()
-        val password = form["password"].orEmpty()
+        val login = open(parseForm(request.body))
+            ?: return Response(400, formPage(error = "Your login didn't come through. Scan the code on the TV and try again."))
+        val username = login["username"].orEmpty().trim()
+        val password = login["password"].orEmpty()
         if (username.isEmpty() || password.isEmpty()) return Response(200, formPage(error = "Enter your email and password."))
 
         val result = withTimeoutOrNull(LOGIN_TIMEOUT_MS) { onCredentials(username, password) }
@@ -163,20 +184,36 @@ class PhoneLoginServer(
         }
     }
 
+    /**
+     * The login the page sealed: `n` (the nonce) and `c` (the ciphertext and tag), both base64url. Null for anything
+     * else, such as plain `username` and `password` fields, a nonce seen before, or a wrong key, code or ciphertext.
+     */
+    private fun open(form: Map<String, String>): Map<String, String>? {
+        if ("username" in form || "password" in form) return null
+        val nonce = unbase64(form["n"]) ?: return null
+        val sealed = unbase64(form["c"]) ?: return null
+        if (nonce.size != NONCE_BYTES || !nonces.add(ByteBuffer.wrap(nonce))) return null
+        return unseal(key, code, nonce, sealed)?.let(::parseForm)
+    }
+
     private fun sameCode(given: String?): Boolean = given != null && MessageDigest.isEqual(given.toByteArray(), code.toByteArray())
 
     private fun formPage(error: String?): String = page(
         "Log in to Ultiworld TV",
+        // Shown until the script finds the key. The fields have no names, so the form can't send them as they are.
         """
-        <p class="muted">Use your Ultiworld account. The TV logs in for you on ultiworld.com; your password isn't stored.</p>
-        ${error?.let { "<p class=\"error\">${escape(it)}</p>" } ?: ""}
-        <form method="post" action="/?k=$code" autocomplete="on">
-          <label>Email or username<input name="username" type="text" inputmode="email" autocomplete="username"
-            autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus></label>
-          <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <p id="scan" class="muted">Scan the QR code on the TV with your phone's camera to log in.</p>
+        <form id="login" method="post" action="/?k=$code" autocomplete="on" hidden>
+          <p class="muted">Use your Ultiworld account. The TV logs in for you on ultiworld.com; your password isn't stored.</p>
+          ${error?.let { "<p class=\"error\">${escape(it)}</p>" } ?: ""}
+          <label>Email or username<input id="username" type="text" inputmode="email" autocomplete="username"
+            autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+          <label>Password<input id="password" type="password" autocomplete="current-password" required></label>
+          <input type="hidden" name="n"><input type="hidden" name="c">
           <button type="submit">Log in on the TV</button>
         </form>
-        """
+        """,
+        withScript = true
     )
 
     private class Request(val method: String, val path: String, val query: Map<String, String>, val body: String)
@@ -196,11 +233,71 @@ class PhoneLoginServer(
         private const val MAX_HEADER_BYTES = 8 * 1024
         private const val MAX_BODY_BYTES = 4 * 1024
         private const val CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
+        private const val KEY_BYTES = 32
+        private const val NONCE_BYTES = 12
+        private const val TAG_BITS = 128
 
         private fun newCode(): String {
             val random = SecureRandom()
             return (1..10).map { CODE_ALPHABET[random.nextInt(CODE_ALPHABET.length)] }.joinToString("")
         }
+
+        /** AES-256-GCM decryption of [sealed] (ciphertext then tag) as UTF-8, with [code] as associated data. Null if it fails. */
+        internal fun unseal(key: ByteArray, code: String, nonce: ByteArray, sealed: ByteArray): String? = try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, nonce))
+            cipher.updateAAD(code.toByteArray(Charsets.UTF_8))
+            String(cipher.doFinal(sealed), Charsets.UTF_8)
+        } catch (e: GeneralSecurityException) {
+            null
+        }
+
+        private fun base64(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+
+        private fun unbase64(s: String?): ByteArray? = s?.let {
+            try {
+                Base64.getUrlDecoder().decode(it)
+            } catch (e: IllegalArgumentException) {
+                null
+            }
+        }
+
+        private val IMPORT = Regex("""^import (\{[^}]*\}) from "(\./[^"]+)";$""")
+        private val EXPORT = Regex("""^export (?:async )?(?:function\*?|const|let|class) +([A-Za-z_$][\w$]*)""")
+
+        /**
+         * The page's script, inline so a page needs one request: the AES-GCM from @noble/ciphers, then phone-login.js.
+         * The library's ES modules are as published (see NOTICE). Each one runs in its own function, as it would as a
+         * module: its imports read from the modules before it, and it returns what it exports.
+         */
+        private val script: String by lazy {
+            val modules = listOf("utils.js", "_polyval.js", "aes.js").joinToString("\n") { name ->
+                // Stored without the leading _: Android leaves files named like that out of the APK.
+                val lines = resource("noble-ciphers/${name.removePrefix("_")}").lines()
+                val exports = lines.mapNotNull { EXPORT.find(it)?.groupValues?.get(1) }
+                val body = lines.joinToString("\n") { line ->
+                    val import = IMPORT.matchEntire(line)
+                    when {
+                        import != null -> "const ${import.groupValues[1]} = modules[\"${import.groupValues[2]}\"];"
+                        line.startsWith("export ") -> line.removePrefix("export ").also { check(EXPORT.containsMatchIn(line)) { line } }
+                        else -> line.also { check(!line.startsWith("import ")) { line } }
+                    }
+                }
+                "modules[\"./$name\"] = (() => {\n$body\nreturn { ${exports.joinToString()} };\n})();"
+            }
+            val all = "(() => {\n\"use strict\";\nconst modules = {};\n$modules\nconst { gcm } = modules[\"./aes.js\"];\n" +
+                "${resource("phone-login.js")}})();\n"
+            all.also { check(!it.contains("</script", ignoreCase = true) && !it.contains("<!--")) }
+        }
+
+        /** Lets the browser run [script] and nothing else. */
+        private val csp: String by lazy {
+            val hash = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(script.toByteArray(Charsets.UTF_8)))
+            "default-src 'none'; script-src 'sha256-$hash'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'"
+        }
+
+        private fun resource(name: String): String = PhoneLoginServer::class.java.getResourceAsStream("/phonelogin/$name")!!
+            .use { it.readBytes().toString(Charsets.UTF_8) }
 
         /** Reads one HTTP/1.x request: request line, headers, and a body of at most [MAX_BODY_BYTES]. */
         private fun readRequest(input: InputStream): Request? {
@@ -284,7 +381,7 @@ class PhoneLoginServer(
                 append("Cache-Control: no-store\r\n")
                 append("Referrer-Policy: no-referrer\r\n")
                 append("X-Frame-Options: DENY\r\n")
-                append("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; form-action 'self'\r\n")
+                append("Content-Security-Policy: $csp\r\n")
                 append("Connection: close\r\n\r\n")
             }
             runCatching {
@@ -296,7 +393,7 @@ class PhoneLoginServer(
             }
         }
 
-        private fun page(title: String, content: String): String = """
+        private fun page(title: String, content: String, withScript: Boolean = false): String = """
             <!doctype html>
             <html lang="en"><head>
             <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -324,7 +421,7 @@ class PhoneLoginServer(
             <h1>${escape(title)}</h1>
             $content
             <p class="muted small">Ultiworld TV is an unofficial app, not made by or affiliated with Ultiworld.</p>
-            </main></body></html>
-        """.trimIndent()
+            </main>
+        """.trimIndent() + (if (withScript) "\n<script>$script</script>" else "") + "\n</body></html>\n"
     }
 }
