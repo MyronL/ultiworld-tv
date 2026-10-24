@@ -159,7 +159,7 @@ private fun PhonePanel(url: String, modifier: Modifier = Modifier) {
         }
         Spacer(Modifier.height(16.dp))
         Text(
-            "Scan with your phone's camera and log in there. Your phone needs to be on the same Wi-Fi as the TV.",
+            "Scan with your phone on the same Wi-Fi.",
             style = MaterialTheme.typography.bodySmall,
             color = Palette.TextMuted
         )

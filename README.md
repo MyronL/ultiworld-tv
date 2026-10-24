@@ -52,6 +52,7 @@ To build it yourself and install it from a computer instead, see [docs/building.
 - **Plays only what your plan includes.** It doesn't get around Ultiworld's paywall.
 - **Counts as one of your devices**, like the website, and stops if Ultiworld says you're watching on too many.
 - **Doesn't store your password.** It keeps you logged in the way a browser does.
+- **Encrypts a login sent from your phone**, with a one-time key in the QR code, before it crosses your Wi-Fi.
 - **Checks GitHub for updates** every few hours, and downloads one only when you press **Update**.
 
 ## Contributing
