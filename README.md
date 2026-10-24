@@ -8,7 +8,7 @@ subscription and plays the same streams the website does.
 
 Unofficial: not made by, endorsed by or affiliated with Ultiworld. You need your own Ultiworld account, and
 the app only plays what that account can already watch on the website, under the site's device limit. It
-isn't in any app store; you build it and install it on your TV yourself (below).
+isn't in any app store; you download it onto the TV yourself (below).
 
 ## What's on screen
 
@@ -65,6 +65,9 @@ when Ultiworld changes its pages, that's the file to fix.
 - **Stream requests** go to Mux with ultiworld.com as the referrer, as they do from the website's player.
 - **Not loaded in the hidden page:** ads, tracking scripts and the page's own player (and with it Mux's
   viewing stats), to spare the TV's CPU. The video plays in the app's own player instead.
+- **Updates:** the downloaded app asks GitHub every few hours whether there's a newer release, and downloads it
+  only when you press **Update**. Android installs it only after you confirm, and only if it's signed with the
+  same key as the app you have. Apps you build yourself don't check.
 - **Your password** goes only into Ultiworld's own login form and isn't stored; the TV keeps the login
   cookie, as a browser does.
 
@@ -73,8 +76,37 @@ Ultiworld and want something changed, open an issue.
 
 ## Install on the TV
 
-It runs on Android TV and Google TV 8.0 or newer. Some TVs from cable companies, hotels or workplaces lock
-developer options, and on those it can't be installed.
+It runs on Android TV and Google TV 8.0 or newer. Some TVs from cable companies, hotels or workplaces don't
+allow apps from outside their store, and on those it can't be installed.
+
+No computer needed:
+
+1. On the TV, install **Downloader** by AFTVnews from the Play Store.
+2. Open it and type this address into its box:
+
+   ```
+   https://github.com/MyronL/ultiworld-tv/releases/latest/download/ultiworld-tv.apk
+   ```
+
+3. When it has downloaded, choose **Install**. The first time, the TV asks you to let Downloader install
+   apps: turn that on and go back. If your TV doesn't offer it (some Google TVs hide it), turn on developer
+   options first: open **Settings → System → About** and press OK on **Android TV OS build** seven times,
+   then try again. If Google Play Protect warns that it doesn't know the app, choose to install anyway.
+4. Open Ultiworld TV from your apps and log in once with your Ultiworld account. Type it with the remote (OK
+   on a field opens the keyboard), or scan the QR code with a phone on the same Wi-Fi and type it there.
+
+When there's a new version, an **Update** button appears at the top of Home. Press it and confirm on the TV's
+install screen. The first time, the TV asks you to let Ultiworld TV install apps, the same way it asked for
+Downloader. The app closes to update; open it again and you're still logged in. Each release and what changed
+is on the [releases page](https://github.com/MyronL/ultiworld-tv/releases).
+
+To log out, use **Sign out** at the top of Home. To remove the app, uninstall it like any other app:
+**Settings → Apps → Ultiworld TV → Uninstall**.
+
+### Build it yourself
+
+You can also build the app and install it from a computer, over the network with `adb`. If the TV already
+has the downloaded app, uninstall that first: the two are signed with different keys.
 
 On your computer (macOS or Linux; on Windows, use WSL) you need:
 
@@ -117,16 +149,12 @@ The computer and the TV must be on the same network.
    port shown on the *Wireless debugging* screen itself, which isn't the pairing port:
    `TV_HOST=<ip> TV_PORT=<port> ./install.sh`.
 
-4. On the TV, log in once with your Ultiworld account. Type it with the remote (OK on a field opens the
-   keyboard), or scan the QR code with a phone on the same Wi-Fi and type it there.
+4. On the TV, log in once with your Ultiworld account.
 5. Turn USB debugging off again if you like. The app stays installed and logged in.
 
 To update, turn USB debugging back on, run `git pull`, then `./install.sh` again from the same computer.
 The app is signed with that computer's own key, so to install from a different computer, uninstall it from
 the TV first (`install.sh` says so if you forget). You'll need to log in again after that.
-
-To log out, use **Sign out** at the top of Home. To remove the app, uninstall it like any other app:
-**Settings → Apps → Ultiworld TV → Uninstall**.
 
 ## Develop
 
@@ -139,6 +167,8 @@ export JAVA_HOME=/path/to/jdk    # JDK 17 or newer, e.g. $(/usr/libexec/java_hom
 `testDebugUnitTest` also writes every page script to `app/build/scripts/*.js`, wrapped the way the app runs
 it, so you can `node --check` them or paste one into a browser console on ultiworld.com to test it against
 the live site.
+
+Publishing a release is in [docs/releasing.md](docs/releasing.md).
 
 The launcher banner is a vector drawable generated on a Mac by
 `swift tools/banner.swift app/src/main/res/drawable/banner.xml`, which turns its lettering into outlines.

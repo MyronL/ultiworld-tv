@@ -69,7 +69,7 @@ if ! OUT="$("$ADB" -s "$TV" install -r "$APK" 2>&1)"; then
   echo "$OUT" >&2
   if echo "$OUT" | grep -q INSTALL_FAILED_UPDATE_INCOMPATIBLE; then
     echo "" >&2
-    echo "The app on the TV was installed from a different computer, which signed it with its own key. Uninstall it" >&2
+    echo "The app on the TV was downloaded or installed from a different computer, so it's signed with another key. Uninstall it" >&2
     echo "first (on the TV: Settings > Apps > Ultiworld TV > Uninstall, or run: $ADB -s $TV uninstall $PACKAGE)," >&2
     echo "then run this again. You'll need to log in again afterwards." >&2
   fi

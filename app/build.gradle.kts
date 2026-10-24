@@ -12,8 +12,25 @@ android {
         applicationId = "io.github.myronl.ultiworldtv"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        // Raise both for every release: a TV only installs an APK over one with a lower versionCode, and the
+        // release workflow only publishes a tag named v<versionName>.
+        versionCode = 2
+        versionName = "0.2"
+        // Whether the app updates itself from the GitHub releases; only the published, release-signed APK does.
+        buildConfigField("boolean", "UPDATES", "false")
+    }
+
+    // The published APK is signed with one release key, kept out of the repo (docs/releasing.md), so each release
+    // installs over the last. Built without it, as install.sh does, a release build uses this computer's debug key.
+    val releaseKeystore = System.getenv("RELEASE_KEYSTORE")
+    if (releaseKeystore != null) {
+        fun env(name: String) = System.getenv(name) ?: error("RELEASE_KEYSTORE is set but $name isn't")
+        signingConfigs.create("release") {
+            storeFile = file(releaseKeystore)
+            storePassword = env("RELEASE_KEYSTORE_PASSWORD")
+            keyAlias = env("RELEASE_KEY_ALIAS")
+            keyPassword = env("RELEASE_KEY_PASSWORD")
+        }
     }
 
     buildTypes {
@@ -21,8 +38,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Sideloaded over ADB, not published to a store: signing with your own debug key lets it install over a debug build.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")
+            buildConfigField("boolean", "UPDATES", (releaseKeystore != null).toString())
         }
     }
 

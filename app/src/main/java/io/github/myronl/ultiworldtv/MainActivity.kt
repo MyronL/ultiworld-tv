@@ -62,6 +62,7 @@ import io.github.myronl.ultiworldtv.ui.SearchModel
 import io.github.myronl.ultiworldtv.ui.SearchScreen
 import io.github.myronl.ultiworldtv.ui.Spinner
 import io.github.myronl.ultiworldtv.ui.UltiworldTheme
+import io.github.myronl.ultiworldtv.update.Updater
 import kotlinx.coroutines.launch
 
 private sealed interface Screen {
@@ -87,6 +88,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var home: HomeModel
     private lateinit var login: LoginModel
     private lateinit var search: SearchModel
+    private lateinit var updater: Updater
     private val collections = CollectionModel()
     private lateinit var composeView: ComposeView
     private lateinit var hint: TextView
@@ -101,6 +103,7 @@ class MainActivity : ComponentActivity() {
         home = HomeModel(repo, getSharedPreferences("settings", MODE_PRIVATE))
         login = LoginModel(repo)
         search = SearchModel(repo)
+        updater = Updater(this, lifecycleScope)
 
         composeView = ComposeView(this).apply { setContent { UltiworldTheme { App() } } }
         hint = TextView(this).apply {
@@ -134,6 +137,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        updater.close()
         (bridge.webView.parent as? ViewGroup)?.removeView(bridge.webView)
         bridge.webView.destroy()
         super.onDestroy()
@@ -184,6 +188,7 @@ class MainActivity : ComponentActivity() {
 
             Screen.Home -> HomeScreen(
                 model = home,
+                updater = updater,
                 onOpen = ::open,
                 onGame = { game ->
                     when (game.videos.size) {

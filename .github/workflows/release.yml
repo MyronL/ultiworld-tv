@@ -1,0 +1,73 @@
+name: Release
+
+# Pushing a tag v<versionName> builds the APK, signs it with the release key and publishes it as a GitHub
+# release. The newest one is always at releases/latest/download/ultiworld-tv.apk. See docs/releasing.md.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the earlier tags, to compare versionCode with
+
+      - name: Tag matches the app's version, and versionCode went up
+        run: |
+          name="$(sed -n 's/^ *versionName = "\(.*\)"$/\1/p' app/build.gradle.kts)"
+          if [ "v$name" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match versionName \"$name\" in app/build.gradle.kts"
+            exit 1
+          fi
+          code() { sed -n 's/^ *versionCode = \([0-9]*\)$/\1/p'; }
+          now="$(code < app/build.gradle.kts)"
+          if prev="$(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null)"; then
+            before="$(git show "${prev}:app/build.gradle.kts" | code)"
+            if [ "$now" -le "$before" ]; then
+              echo "::error::versionCode is $now, but $prev already had $before; TVs won't take it as an update"
+              exit 1
+            fi
+          fi
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Also checks that gradle/wrapper/gradle-wrapper.jar is an official Gradle release.
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Style, unit tests and Android lint
+        run: ./gradlew ktlintCheck testDebugUnitTest lintRelease
+
+      - name: Signed release build
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          # Without the key the build would quietly fall back to a debug key, and that APK can't update anyone's TV.
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "::error::The RELEASE_KEYSTORE_BASE64 secret isn't set; see docs/releasing.md"
+            exit 1
+          fi
+          export RELEASE_KEYSTORE="$RUNNER_TEMP/release.jks"
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RELEASE_KEYSTORE"
+          ./gradlew assembleRelease
+          rm "$RELEASE_KEYSTORE"
+          cp app/build/outputs/apk/release/app-release.apk ultiworld-tv.apk
+          sha256sum ultiworld-tv.apk > ultiworld-tv.apk.sha256
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" ultiworld-tv.apk ultiworld-tv.apk.sha256
+          --title "Ultiworld TV $GITHUB_REF_NAME" --generate-notes --verify-tag

@@ -36,9 +36,11 @@ import io.github.myronl.ultiworldtv.bridge.ChallengeRequiredException
 import io.github.myronl.ultiworldtv.data.Game
 import io.github.myronl.ultiworldtv.data.GameStatus
 import io.github.myronl.ultiworldtv.data.VideoCard
+import io.github.myronl.ultiworldtv.update.Updater
 import kotlinx.coroutines.delay
 
 private const val LIBRARY_REFRESH_MS = 3 * 60_000L
+private const val UPDATE_CHECK_MS = 30 * 60_000L
 
 /** One row of the home screen. */
 private sealed interface HomeRow {
@@ -52,6 +54,7 @@ private sealed interface HomeRow {
 @Composable
 fun HomeScreen(
     model: HomeModel,
+    updater: Updater,
     onOpen: (VideoCard) -> Unit,
     onGame: (Game) -> Unit,
     onSearch: () -> Unit,
@@ -86,6 +89,15 @@ fun HomeScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                updater.check()
+                delay(UPDATE_CHECK_MS)
+            }
+        }
+    }
+
     val library = model.library
     val rows = remember(library, model.scores) { buildRows(model) }
 
@@ -99,9 +111,9 @@ fun HomeScreen(
             )
 
             // Today's games slot in between the library's rows, so wait for them too rather than shuffle rows later.
-            library == null || !model.scoresTried -> HomeLoading(model, onSearch, onSignOut)
+            library == null || !model.scoresTried -> HomeLoading(model, updater, onSearch, onSignOut)
 
-            else -> HomeRows(model, rows, onOpen, onGame, onSearch, onSignOut)
+            else -> HomeRows(model, updater, rows, onOpen, onGame, onSearch, onSignOut)
         }
     }
 }
@@ -109,6 +121,7 @@ fun HomeScreen(
 @Composable
 private fun HomeRows(
     model: HomeModel,
+    updater: Updater,
     rows: List<HomeRow>,
     onOpen: (VideoCard) -> Unit,
     onGame: (Game) -> Unit,
@@ -142,7 +155,7 @@ private fun HomeRows(
         verticalArrangement = Arrangement.spacedBy(28.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        item(key = "header") { Header(model, onSearch, onSignOut) }
+        item(key = "header") { Header(model, updater, onSearch, onSignOut) }
         if (rows.isEmpty()) {
             item(key = "empty") {
                 Text("Nothing in the video library right now.", color = Palette.TextMuted, modifier = Modifier.padding(horizontal = 48.dp))
@@ -183,10 +196,10 @@ private fun HomeRows(
 
 /** The header, ready to use, above rows of placeholder cards laid out where the library's rows will appear. */
 @Composable
-private fun HomeLoading(model: HomeModel, onSearch: () -> Unit, onSignOut: () -> Unit) {
+private fun HomeLoading(model: HomeModel, updater: Updater, onSearch: () -> Unit, onSignOut: () -> Unit) {
     val brush = shimmer()
     Column(Modifier.fillMaxSize().padding(vertical = 32.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
-        Header(model, onSearch, onSignOut)
+        Header(model, updater, onSearch, onSignOut)
         repeat(3) {
             Column {
                 PlaceholderLine(brush, Modifier.padding(start = 48.dp, bottom = 4.dp).width(200.dp), height = 26.dp)
@@ -204,16 +217,29 @@ private fun HomeLoading(model: HomeModel, onSearch: () -> Unit, onSignOut: () ->
 }
 
 @Composable
-private fun Header(model: HomeModel, onSearch: () -> Unit, onSignOut: () -> Unit) {
+private fun Header(model: HomeModel, updater: Updater, onSearch: () -> Unit, onSignOut: () -> Unit) {
     Row(Modifier.padding(horizontal = 48.dp), verticalAlignment = Alignment.CenterVertically) {
         BrandMark()
         Spacer(Modifier.weight(1f))
+        updateLabel(updater.state)?.let { label ->
+            // Stays enabled while it works, so it keeps focus; pressing it again does nothing.
+            Button(onClick = updater::install) { Text(label) }
+            Spacer(Modifier.width(16.dp))
+        }
         OutlinedButton(onClick = onSearch) { Text("Search") }
         Spacer(Modifier.width(16.dp))
         OutlinedButton(onClick = model::toggleHideScores) { Text(if (model.hideScores) "Show scores" else "Hide scores") }
         Spacer(Modifier.width(16.dp))
         OutlinedButton(onClick = onSignOut) { Text("Sign out") }
     }
+}
+
+private fun updateLabel(state: Updater.State): String? = when (state) {
+    Updater.State.None -> null
+    is Updater.State.Available -> "Update to ${state.release.version}"
+    is Updater.State.Downloading -> state.percent?.let { "Downloading update… $it%" } ?: "Downloading update…"
+    is Updater.State.Installing -> "Installing update…"
+    is Updater.State.Failed -> "Update failed. Try again"
 }
 
 @Composable
