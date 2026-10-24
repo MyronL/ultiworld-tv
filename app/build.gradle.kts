@@ -14,8 +14,8 @@ android {
         targetSdk = 36
         // Raise both for every release: a TV only installs an APK over one with a lower versionCode, and the
         // release workflow only publishes a tag named v<versionName>.
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = 3
+        versionName = "0.3"
         // Whether the app updates itself from the GitHub releases; only the published, release-signed APK does.
         buildConfigField("boolean", "UPDATES", "false")
     }
