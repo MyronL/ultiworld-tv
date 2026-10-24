@@ -211,9 +211,9 @@ class PhoneLoginServer(
         "Log in to Ultiworld TV",
         // Shown until the script finds the key. The fields have no names, so the form can't send them as they are.
         """
-        <p id="scan" class="muted">Scan the QR code on the TV with your phone's camera to log in.</p>
+        <p id="scan" class="muted">Scan the QR code on the TV to log in.</p>
         <form id="login" method="post" action="/?k=$code" autocomplete="on" hidden>
-          <p class="muted">Use your Ultiworld account. The TV logs in for you on ultiworld.com; your password isn't stored.</p>
+          <p class="muted">Your password isn't stored.</p>
           ${error?.let { "<p class=\"error\">${escape(it)}</p>" } ?: ""}
           <label>Email or username<input id="username" type="text" inputmode="email" autocomplete="username"
             autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
@@ -410,13 +410,14 @@ class PhoneLoginServer(
             <style>
               :root { color-scheme: dark; }
               body { margin: 0; background: #0E1116; color: #E8EAED; font: 17px/1.45 system-ui, -apple-system, sans-serif; }
-              main { max-width: 420px; margin: 0 auto; padding: 32px 20px; }
+              main { max-width: 420px; margin: 0 auto; padding: 32px 20px; box-sizing: border-box;
+                min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
               .brand { font-weight: 900; letter-spacing: .5px; font-size: 22px; margin: 0 0 24px; }
               .brand b { color: #D2232A; } .brand span { color: #00A3B4; }
               .brand small { color: #9AA3AE; font-size: 12px; font-weight: 600; letter-spacing: 1.5px; }
               h1 { font-size: 24px; margin: 0 0 8px; }
               .muted { color: #9AA3AE; margin-top: 0; }
-              .small { font-size: 13px; margin-top: 32px; }
+              footer { margin-top: auto; padding-top: 32px; color: #9AA3AE; font-size: 13px; }
               .error { background: #3a1416; border: 1px solid #D2232A; color: #ffd7d9; padding: 10px 12px; border-radius: 8px; }
               label { display: block; margin: 16px 0 0; color: #9AA3AE; font-size: 15px; }
               input { display: block; box-sizing: border-box; width: 100%; margin-top: 6px; padding: 14px; font-size: 17px;
@@ -429,7 +430,7 @@ class PhoneLoginServer(
             <p class="brand"><b>ULTIWORLD</b> <span>TV</span> <small>UNOFFICIAL</small></p>
             <h1>${escape(title)}</h1>
             $content
-            <p class="muted small">Ultiworld TV is an unofficial app, not made by or affiliated with Ultiworld.</p>
+            <footer>Ultiworld TV is an unofficial app, not made by or affiliated with Ultiworld.</footer>
             </main>
         """.trimIndent() + (if (withScript) "\n<script>$script</script>" else "") + "\n</body></html>\n"
     }
