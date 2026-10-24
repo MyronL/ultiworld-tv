@@ -52,7 +52,8 @@ Downloads, and that check, need the repository to be public; while it's private,
 To build a signed APK on your own computer instead, set the same four values as environment variables, with
 `RELEASE_KEYSTORE` pointing at the `.jks` file in place of the base64 one, and run `./gradlew assembleRelease`.
 
-## A shorter address
+## The Downloader code
 
-The full link is long to type with a remote. Downloader also takes short numeric codes, which you can make for
-any link on AFTVnews's site. Once there's one for the link above, put it in the README's install steps.
+The full link is long to type with a remote, so the README also gives the Downloader code **2714454**, made on
+AFTVnews's site (go.aftvnews.com) for the link above. It always leads to the newest release, so it never needs
+changing.

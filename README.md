@@ -25,7 +25,8 @@ It runs on Android TV and Google TV 8.0 or newer. Some TVs from cable companies,
 allow apps from outside their store, and on those it can't be installed.
 
 1. On the TV, install **Downloader** by AFTVnews from the Play Store.
-2. Open it and type this address into its box:
+2. Open it and type the code **2714454** into its box, then choose **Go**. If the code doesn't work, type
+   the full address instead:
 
    ```
    https://github.com/MyronL/ultiworld-tv/releases/latest/download/ultiworld-tv.apk
