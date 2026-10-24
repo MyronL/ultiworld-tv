@@ -101,16 +101,8 @@ fun LoginScreen(model: LoginModel, onResult: (LoginResult) -> Unit) {
             BrandMark()
             Spacer(Modifier.height(20.dp))
             Text("Log in with your Ultiworld account", style = MaterialTheme.typography.headlineSmall, color = Palette.Text)
-            Text(
-                "This TV stays logged in. Your password goes only to ultiworld.com and isn't stored.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Palette.TextMuted
-            )
-            Text(
-                "Ultiworld TV is an unofficial app. It isn't made by or affiliated with Ultiworld.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Palette.TextMuted
-            )
+            // The brand mark above already says "Unofficial".
+            Text("Your password isn't stored.", style = MaterialTheme.typography.bodyMedium, color = Palette.TextMuted)
             Spacer(Modifier.height(24.dp))
             TvTextField(
                 value = username,
